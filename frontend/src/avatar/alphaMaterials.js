@@ -9,7 +9,7 @@ import * as THREE from "three";
  * ?hair=legacy in the URL turns this off, for before/after comparisons.
  * Returns what was applied so tests and diagnostics can read it.
  */
-export function tuneAlphaMaterials(root, renderer, { underlayer = true, hairCutoff = 0.45 } = {}) {
+export function tuneAlphaMaterials(root, renderer, { softPass = true, hairCutoff = 0.5 } = {}) {
   const gl = renderer.getContext();
   const samples = gl.getParameter(gl.SAMPLES) || 0;
   const legacy = typeof location !== "undefined" && new URLSearchParams(location.search).get("hair") === "legacy";
@@ -32,46 +32,66 @@ export function tuneAlphaMaterials(root, renderer, { underlayer = true, hairCuto
     }
   });
   report.hairCutoff = hairCutoff;
-  report.underlayer = null;
+  report.underlayer = null; // the old scalp cap mesh is gone; kept as a field so diagnostics stay readable
+  report.softPass = null;
   root.traverse((o) => {
     if (!o.isMesh) return;
     for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-      if (m && report.enabled && /hair/i.test(m.name || o.name)) m.alphaTest = Math.max(m.alphaTest, hairCutoff); // denser cards; the underlayer carries the body of the hair
+      if (m && report.enabled && /hair/i.test(m.name || o.name)) m.alphaTest = Math.max(m.alphaTest, hairCutoff); // pass A: opaque cards
     }
   });
-  if (underlayer && !legacy) report.underlayer = addHairUnderlayer(root);
+  if (softPass && !legacy) report.softPass = addHairSoftPass(root, { cutoff: hairCutoff });
   return report;
 }
 
 /**
- * Opaque dark hair-coloured scalp cap beneath the hair cards, so nothing behind the head shows between strands.
- * It is one extra draw (an ellipsoid, no alpha, matte #1a1512) fitted from the hair mesh's bounding box at ~97% so it
- * covers the whole top of the scalp under the hair cards, without poking out at the forehead or ears. It is parented
- * to the head bone so it follows the head. Returns {mesh, radii, ...} or null when there is no hair mesh or head bone.
+ * Two-pass hair (the standard fix for see-through alpha hair). Pass A is the original skinned card mesh: opaque,
+ * alpha-tested at the cutoff, depth write on, alpha-to-coverage for smooth edges. Pass B is a clone of each hair mesh that
+ * shares its geometry, skeleton and morph state, alpha-blended with depth write off, and drawing ONLY the texels below
+ * the cutoff (the soft strand edges and wisps), so the hair has body and no gap lets the scene behind it show through.
+ * No extra shape is added to the head. Returns {passes, meshes} (meshes = the blended clones).
  */
-export function addHairUnderlayer(root, { color = 0x1a1512, fit = 0.97 } = {}) {
-  let hair = null,
-    head = null;
+export function addHairSoftPass(root, { cutoff = 0.5 } = {}) {
+  const sources = [];
   root.traverse((o) => {
-    if (!hair && o.isMesh && /hair/i.test(o.name) && !o.userData.hairUnderlayer) hair = o;
-    if (!head && o.isBone && o.name === "head") head = o;
+    if (!o.isMesh || o.userData.hairSoftPass) return;
+    if ([].concat(o.material).some((m) => m && /hair/i.test(m.name || o.name) && m.map && m.alphaTest > 0)) sources.push(o);
   });
-  if (!hair || !head) return null;
-  root.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(hair);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const geometry = new THREE.SphereGeometry(1, 32, 20, 0, Math.PI * 2, 0, THREE.MathUtils.degToRad(100));
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0, side: THREE.FrontSide });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = "hair_scalp_cap";
-  mesh.userData.hairUnderlayer = true;
-  mesh.renderOrder = -1;
-  const scale = head.getWorldScale(new THREE.Vector3());
-  const radii = size.clone().multiplyScalar(0.5 * fit);
-  mesh.scale.set(radii.x / scale.x, radii.y / scale.y, radii.z / scale.z);
-  head.add(mesh);
-  mesh.position.copy(head.worldToLocal(center.clone()));
-  mesh.position.y += radii.y * 0.05 / scale.y;
-  return { mesh, radii: radii.toArray().map((v) => +v.toFixed(4)), center: center.toArray().map((v) => +v.toFixed(3)), drawCalls: 1 };
+  const meshes = [];
+  for (const src of sources) {
+    const mats = [].concat(src.material).map((m) => {
+      if (!m || !(m.alphaTest > 0)) return m;
+      const soft = m.clone();
+      soft.name = `${m.name}_soft`;
+      soft.alphaTest = 0;
+      soft.alphaToCoverage = false;
+      soft.transparent = true;
+      soft.depthWrite = false;
+      soft.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace("#include <alphatest_fragment>", `if ( diffuseColor.a >= ${cutoff.toFixed(3)} ) discard;`);
+      };
+      soft.customProgramCacheKey = () => `hair-soft-${cutoff}`;
+      return soft;
+    });
+    const material = Array.isArray(src.material) ? mats : mats[0];
+    const clone = src.isSkinnedMesh ? new THREE.SkinnedMesh(src.geometry, material) : new THREE.Mesh(src.geometry, material);
+    clone.name = `${src.name}_soft`;
+    clone.userData.hairSoftPass = true;
+    clone.renderOrder = (src.renderOrder || 0) + 2;
+    clone.frustumCulled = false;
+    clone.position.copy(src.position);
+    clone.quaternion.copy(src.quaternion);
+    clone.scale.copy(src.scale);
+    if (src.isSkinnedMesh) {
+      clone.bindMode = src.bindMode;
+      clone.bind(src.skeleton, src.bindMatrix);
+    }
+    if (src.morphTargetInfluences) {
+      clone.morphTargetInfluences = src.morphTargetInfluences; // shared: follows the original
+      clone.morphTargetDictionary = src.morphTargetDictionary;
+    }
+    src.parent.add(clone);
+    meshes.push(clone);
+  }
+  return { passes: meshes.length ? 2 : 1, meshes: meshes.map((m) => m.name) };
 }

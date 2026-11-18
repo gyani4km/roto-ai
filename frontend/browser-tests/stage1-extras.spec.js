@@ -200,7 +200,7 @@ test.describe("Mic test and microphone permission paths", () => {
     await developerReady(page);
     const run = page.getByTestId("mic-test-run");
     for (const [name, message] of [
-      ["NotAllowedError", /Microphone access was blocked/],
+      ["NotAllowedError", /Microphone blocked/],
       ["NotFoundError", /No microphone found/],
       ["NotReadableError", /busy in another app/],
     ]) {
@@ -211,7 +211,7 @@ test.describe("Mic test and microphone permission paths", () => {
     }
     await page.evaluate(() => (window.__gumError = ""));
     await run.click();
-    await expect(page.getByTestId("mic-test-result")).toContainText("Speech recognition is not set up", { timeout: 15000 });
+    await expect(page.getByTestId("mic-test-result")).toContainText("Speech service error", { timeout: 15000 });
   });
 
 });

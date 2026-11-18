@@ -85,3 +85,21 @@ export function visibleWindow({ innerWidth, innerHeight, outerWidth, outerHeight
   const h = Math.min(innerHeight, (screen?.availHeight || innerHeight) - Math.max(0, screenY) - chromeH);
   return { w: Math.max(200, Math.round(w)), h: Math.max(200, Math.round(h)) };
 }
+
+/** "Holobox 4K": a true 2160x3840 drawing buffer (CSS scales it to fit the window). */
+export const QUALITY_4K = { w: 2160, h: 3840 };
+/**
+ * "Fit to screen": a 9:16 drawing buffer sized to the visible box (css px x device pixel ratio, at most 1.5x and never
+ * above 1080x1920), so a small preview does not pay for a 4K frame.
+ */
+export function fitBufferSize(cssW, cssH, dpr = 1, aspect = 9 / 16) {
+  const scale = Math.min(1.5, Math.max(1, dpr || 1));
+  let w = Math.max(1, cssW) * scale;
+  let h = Math.max(1, cssH) * scale;
+  if (w / h > aspect) w = h * aspect;
+  else h = w / aspect;
+  const k = Math.min(1, 1920 / h, 1080 / w);
+  return { w: Math.max(180, Math.round(w * k)), h: Math.max(320, Math.round(h * k)) };
+}
+/** The saved quality choice: "4k" | "fit" | null (null = the team setting). */
+export const normalizeQuality = (v) => (v === "4k" || v === "fit" ? v : null);

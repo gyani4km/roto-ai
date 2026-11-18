@@ -27,9 +27,13 @@ export function createSpeechRig({ model, morphs, animation, player = new LipSync
   // The director only sees this narrow actuator, so it never touches THREE or the DOM.
   const actuator = {
     has: (id) => !!animation?.has(id),
-    playGesture: (id, o) => (animation && canMove() ? animation.playGesture(id, o) : false),
-    cancelGestures: (fade) => animation?.cancelGestures(fade),
-    releaseGesture: () => animation?.releaseGesture(),
+    playGesture: (id, o) => {
+      const r = animation && canMove() ? animation.playGesture(id, o) : false;
+      if (r) rig.onPlayGesture?.(id, o); // the master tells its mirrors exactly which gesture it chose
+      return r;
+    },
+    cancelGestures: (fade) => (rig.onGestureOp?.("cancel", fade), animation?.cancelGestures(fade)),
+    releaseGesture: () => (rig.onGestureOp?.("release"), animation?.releaseGesture()),
     setBase: (kind) => animation && canMove() && animation.setBase(kind),
   };
   if (animation) animation.onGestureEvent = (e) => e.type === "pulse" && behaviour.pulse(1.6);
@@ -51,6 +55,12 @@ export function createSpeechRig({ model, morphs, animation, player = new LipSync
       behaviour.setPhase(next);
       director.setPhase(next);
     },
+    /** Mirror side: body language follows the master's phase; the director stays idle (gestures arrive as events). */
+    setMirrorPhase(next) {
+      phase = next;
+      behaviour.enabled = true;
+      behaviour.setPhase(next);
+    },
     /** A word onset: emphasis nod on the head layer, and lets the director sync by word index. */
     onWord(index) {
       behaviour.pulse();
@@ -71,6 +81,14 @@ export function createSpeechRig({ model, morphs, animation, player = new LipSync
     },
     setGestureIntensity(v) {
       animation?.setIntensity(v);
+    },
+    /** Mirror side: play exactly what the master played (no director decisions of its own). */
+    playRemoteGesture(id, o) {
+      return animation && canMove() && animation.has(id) ? animation.playGesture(id, o) : false;
+    },
+    remoteGestureOp(op, fade) {
+      if (op === "cancel") animation?.cancelGestures(fade);
+      else animation?.releaseGesture();
     },
     /** Per frame, after the mixer update. Lip-sync always runs; ambient behaviour can be paused. */
     frame(dt, { ambient = true } = {}) {

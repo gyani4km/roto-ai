@@ -19,6 +19,7 @@ export class LipSyncPlayer {
     this.ctx = null;
     this.active = null;
     this.sinkId = "";
+    this.tap = null; // optional (msg) => void: clip / end / cancel events for silent mirrors (see mirror.js)
     this.lastStats = null; // underrun stats of the last finished stream (see openStream)
   }
   setMorphs(morphs) {
@@ -142,14 +143,22 @@ export class LipSyncPlayer {
         run.sources.push(source);
         run.last = source;
         run.nextAt = at + prepared.buffer.duration;
-        for (const seg of prepared.timeline) run.timeline.push({ ...seg, t_ms: seg.t_ms + offset, end_ms: seg.end_ms + offset });
-        for (const w of prepared.words || []) run.words.push({ ...w, t_ms: w.t_ms + offset, end_ms: w.end_ms + offset });
+        const shiftedTimeline = prepared.timeline.map((seg) => ({ ...seg, t_ms: seg.t_ms + offset, end_ms: seg.end_ms + offset }));
+        const shiftedWords = (prepared.words || []).map((w) => ({ ...w, t_ms: w.t_ms + offset, end_ms: w.end_ms + offset }));
+        run.timeline.push(...shiftedTimeline);
+        run.words.push(...shiftedWords);
         run.endMs = offset + prepared.durationMs;
+        if (this.tap) {
+          // Wall-clock moment the first clip is heard (audio clock -> Date.now(), plus the device output latency).
+          if (first) run.startWall = Math.round(Date.now() + (run.startAt - ctx.currentTime) * 1000 + (ctx.outputLatency || 0) * 1000);
+          this.tap({ type: "clip", startWall: run.startWall, timeline: shiftedTimeline, words: shiftedWords, endMs: run.endMs });
+        }
         if (first) onStart?.();
         return true;
       },
       end: () => {
         run.ended = true;
+        if (this.tap && run.startWall != null) this.tap({ type: "end", startWall: run.startWall });
         if (run.last?.finished) arm();
       },
     };
@@ -183,6 +192,7 @@ export class LipSyncPlayer {
   cancel() {
     const run = this.active;
     this.active = null;
+    this.tap?.({ type: "cancel" });
     if (run) {
       run.done = true;
       clearTimeout(run.endTimer);

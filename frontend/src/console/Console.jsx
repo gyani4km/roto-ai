@@ -3,7 +3,8 @@ import { loadSettings, saveSettings, resetSettings } from "../settings/client.js
 import { THEMES } from "../settings/defaults.js";
 import { api } from "../speech/client.js";
 import { LipSyncPlayer } from "../lipsync/player.js";
-import { listMicrophones, listSpeakers } from "../conversation/recorder.js";
+import { listMicrophones, listSpeakers, readSavedMic, saveMic } from "../conversation/recorder.js";
+import { openControlChannel } from "../holobox/sync.js";
 import { MicTest } from "../conversation/MicTest.jsx";
 import { GESTURE_DEFS } from "../avatar/gestures/clips.js";
 import { Card, Color, Field, Select, Slider, Tags, Text, Toggle } from "./fields.jsx";
@@ -18,16 +19,17 @@ const TABS = [
   ["character", "Character"],
   ["settings", "Settings"],
 ];
-// Live preview shape: the holobox (9:16, default) or a 1920x1080 laptop frame. Remembered in this browser.
-const PREVIEW_FRAMES = [
-  ["holobox", "Holobox 9:16"],
-  ["laptop", "Laptop 16:9"],
+// Drawing quality of every holobox (the preview here and the separate window), always 9:16. Remembered in this browser.
+const QUALITIES = [
+  ["4k", "Holobox 4K"],
+  ["fit", "Fit to screen"],
 ];
-const readFrame = () => {
+const QUALITY_KEY = "roto-holobox-quality";
+const readQuality = () => {
   try {
-    return localStorage.getItem("roto-preview-frame") === "laptop" ? "laptop" : "holobox";
+    return localStorage.getItem(QUALITY_KEY) === "4k" ? "4k" : "fit";
   } catch {
-    return "holobox";
+    return "fit";
   }
 };
 const LANG_NAMES = { en: "English", te: "Telugu", hi: "Hindi" };
@@ -46,6 +48,7 @@ const ANSWER_LENGTHS = [
 // or running holobox is not interrupted); it is navigated only when it is new or has wandered off the holobox page.
 const openHolobox = () => {
   const h = Math.min(1920, Math.max(480, screen.availHeight - 40));
+  const href = `/holobox?quality=${readQuality()}`;
   const features = `popup=yes,width=${Math.round((h * 9) / 16)},height=${h},left=0,top=0`;
   let w = null;
   try {
@@ -54,10 +57,10 @@ const openHolobox = () => {
     try {
       path = w.location.pathname;
     } catch {}
-    if (path !== "/holobox") w.location.href = "/holobox";
+    if (path !== "/holobox") w.location.href = href;
     w.focus();
   } catch {
-    w = window.open("/holobox", "roto-holobox", features);
+    w = window.open(href, "roto-holobox", features);
   }
   return w;
 };
@@ -76,7 +79,9 @@ export default function Console() {
   const [save, setSave] = useState({ state: "idle", errors: [] });
   const [live, setLive] = useState({ state: "idle", ready: false, fps: 0, buffer: null, gestures: [], notice: "" });
   const [previewKey, setPreviewKey] = useState(0);
-  const [shape, setShape] = useState(readFrame);
+  const [quality, setQuality] = useState(readQuality);
+  const [winStatus, setWinStatus] = useState(null);
+  const channel = useRef(null);
   const [now, setNow] = useState(() => Date.now());
   const seen = useRef(0); // when the preview last reported; 0 = not since it (re)loaded
   const [confirmOff, setConfirmOff] = useState(false);
@@ -99,25 +104,35 @@ export default function Console() {
     addEventListener("message", on);
     return () => removeEventListener("message", on);
   }, []);
+  // The control channel: commands out to every holobox, status of the separate window back in.
+  useEffect(() => {
+    channel.current = openControlChannel((msg) => {
+      if (msg?.roto === "status" && !msg.embed) setWinStatus({ ...msg, at: Date.now() });
+    });
+    return () => channel.current?.close();
+  }, []);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
   // The status shown is only ever as fresh as the last report from the preview: if it goes quiet, it is not "ready".
   const reported = seen.current > 0 && now - seen.current < STALE_MS;
-  const shown = reported ? live : { ...live, ready: false, error: null, fps: 0, state: "idle" };
+  const win = winStatus && now - winStatus.at < STALE_MS ? winStatus : null;
+  // The state line follows the master: the separate window when it is the one talking, else the preview.
+  const master = win && win.role === "master" ? win : null;
+  const shown = reported ? { ...live, ...(master ? { state: master.state, notice: master.notice, voiceError: master.voiceError } : {}), windowOpen: !!win || live.windowOpen, audioBlocked: !!win?.audioBlocked } : { ...live, ready: false, error: null, fps: 0, state: "idle" };
   const stalled = seen.current > 0 && !reported;
   const reloadPreview = () => {
     seen.current = 0;
     setLive({ state: "idle", ready: false, fps: 0, buffer: null, gestures: [], notice: "" });
     setPreviewKey((k) => k + 1);
   };
-  const pickFrame = (id) => {
+  const pickQuality = (id) => {
     try {
-      localStorage.setItem("roto-preview-frame", id);
+      localStorage.setItem(QUALITY_KEY, id);
     } catch {}
-    setShape(id);
-    reloadPreview();
+    setQuality(id);
+    channel.current?.post({ roto: "holobox-cmd", src: "console", cmd: "quality", quality: id }); // every open holobox switches live
   };
   const choose = (id) => {
     setTab(id);
@@ -149,7 +164,8 @@ export default function Console() {
     },
     [flush],
   );
-  const cmd = useCallback((name, extra = {}) => frame.current?.contentWindow?.postMessage({ roto: "holobox-cmd", cmd: name, ...extra }, location.origin), []);
+  // Every open holobox hears the command; only the master (the window if one is open, else the preview) acts on it.
+  const cmd = useCallback((name, extra = {}) => channel.current?.post({ roto: "holobox-cmd", src: "console", cmd: name, ...extra }), []);
 
   if (loadError)
     return <div className="console-fatal" role="alert">The ROTO service is not reachable: {loadError} Start it with Start-ROTO.cmd, then reload.</div>;
@@ -177,9 +193,6 @@ export default function Console() {
           <span className={`save-state is-${save.state}`} role="status" data-testid="save-state">
             {save.state === "saving" ? "Saving…" : save.state === "saved" ? "Saved" : save.state === "dirty" ? "Unsaved changes" : save.state === "error" ? "Not saved" : "All changes saved"}
           </span>
-          <button type="button" className="primary" data-testid="open-holobox" onClick={() => openHolobox()}>
-            Preview in Holobox
-          </button>
         </div>
       </header>
       <nav className="console-nav" aria-label="Sections">
@@ -207,15 +220,15 @@ export default function Console() {
       </main>
       {/* Always mounted so the character is never reloaded by switching tabs. */}
       <aside className="console-preview" aria-label="Holobox preview">
-        <div className="preview-tools" role="group" aria-label="Preview shape">
-          {PREVIEW_FRAMES.map(([id, label]) => (
-            <button key={id} type="button" aria-pressed={shape === id} data-testid={`frame-${id}`} onClick={() => shape !== id && pickFrame(id)}>
+        <div className="preview-tools" role="group" aria-label="Picture quality">
+          {QUALITIES.map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={quality === id} data-testid={`quality-${id}`} onClick={() => quality !== id && pickQuality(id)}>
               {label}
             </button>
           ))}
         </div>
-        <div className="preview-frame" data-shape={shape}>
-          <iframe key={previewKey} ref={frame} title="Holobox preview" src={`/holobox?embed=1${shape === "laptop" ? "&frame=laptop" : ""}`} allow="microphone; autoplay; fullscreen" data-testid="preview-frame" />
+        <div className="preview-frame">
+          <iframe key={previewKey} ref={frame} title="Holobox preview" src="/holobox?embed=1" allow="microphone; autoplay; fullscreen" data-testid="preview-frame" />
         </div>
         <p className="preview-status" data-testid="preview-status" data-ready={shown.ready ? "1" : "0"}>
           {shown.ready
@@ -268,29 +281,28 @@ function PreviewSection({ cmd, live, s }) {
   const [text, setText] = useState("");
   const send = () => text.trim() && (cmd("say", { text }), setText(""));
   return (
-    <>
-      <Card title="Talk to the character" note="The preview on the right is the real holobox. Hold the button to speak, or type a question.">
-        <div className="row">
-          <button type="button" className="primary big" data-testid="console-ptt" onPointerDown={(e) => (e.currentTarget.setPointerCapture?.(e.pointerId), cmd("ptt-down"))} onPointerUp={() => cmd("ptt-up")} onPointerCancel={() => cmd("ptt-up")} onContextMenu={(e) => e.preventDefault()}>
-            Hold to talk
-          </button>
-          <button type="button" onClick={() => cmd("stop")} data-testid="console-stop">Stop</button>
-          <button type="button" onClick={() => cmd("reset")} data-testid="console-reset">Reset conversation</button>
-        </div>
-        <form className="row" onSubmit={(e) => (e.preventDefault(), send())}>
-          <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a test question" aria-label="Test question" data-testid="test-talk" />
-          <button type="submit" data-testid="test-send">Ask</button>
-        </form>
-        <div className="row">
-          <button type="button" onClick={() => cmd("speak", { text: s.persona.greeting })}>Speak the greeting</button>
-          <span className="muted" data-testid="live-state">State: {live.state}{live.notice ? ` · ${live.notice}` : ""}</span>
-        </div>
-      </Card>
-      <Card title="Holobox window" note="Opens the output screen in its own window. The picture is always a true 1080×1920 and is scaled to fit a smaller window (letterbox bars in the booth colour). To run it as an app window, use Open-Holobox.cmd. Press F11 there (or double-click) for full screen. Space is push-to-talk, Esc stops, Ctrl+Shift+D opens the operator overlay.">
-        <button type="button" onClick={() => openHolobox()}>Open Holobox (1080×1920)</button>{" "}
-        <a href="/holobox?output=event" target="_blank" rel="noreferrer">Event output (disclosure always on)</a>
-      </Card>
-    </>
+    <Card title="Talk to the character" note="Hold the button to speak, or type a question. The preview and an open Holobox window share one conversation; the window plays the sound.">
+      <div className="row">
+        <button type="button" className="primary big" data-testid="console-ptt" onPointerDown={(e) => (e.currentTarget.setPointerCapture?.(e.pointerId), cmd("ptt-down"))} onPointerUp={() => cmd("ptt-up")} onPointerCancel={() => cmd("ptt-up")} onPointerLeave={(e) => e.buttons === 0 && cmd("ptt-up")} onContextMenu={(e) => e.preventDefault()}>
+          Hold to talk
+        </button>
+        <button type="button" onClick={() => cmd("stop")} data-testid="console-stop">Stop</button>
+        <button type="button" onClick={() => cmd("reset")} data-testid="console-reset">Reset conversation</button>
+      </div>
+      <form className="row" onSubmit={(e) => (e.preventDefault(), send())}>
+        <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a test question" aria-label="Test question" data-testid="test-talk" />
+        <button type="submit" data-testid="test-send">Ask</button>
+      </form>
+      <div className="row">
+        <button type="button" onClick={() => cmd("speak", { text: s.persona.greeting })} data-testid="console-greeting">Speak the greeting</button>
+        <span className="muted" data-testid="live-state">State: {live.state}{live.notice && !live.voiceError ? ` · ${live.notice}` : ""}{live.windowOpen ? " · sound from the Holobox window" : ""}</span>
+      </div>
+      {live.voiceError && <p className="banner is-error" role="alert" data-testid="voice-error">{live.voiceError}</p>}
+      {live.audioBlocked && <p className="banner" role="status" data-testid="sound-blocked">Click once inside the Holobox window to turn its sound on (the browser needs a click there).</p>}
+      <div className="row">
+        <button type="button" data-testid="open-holobox" onClick={() => openHolobox()}>Open Holobox window</button>
+      </div>
+    </Card>
   );
 }
 
@@ -473,7 +485,7 @@ function SettingsSection() {
   const [mics, setMics] = useState([]);
   const [speakers, setSpeakers] = useState([]);
   const read = (k) => { try { return sessionStorage.getItem(k) || ""; } catch { return ""; } };
-  const [mic, setMic] = useState(read("roto-mic-device"));
+  const [mic, setMic] = useState(readSavedMic);
   const [spk, setSpk] = useState(read("roto-speaker-device"));
   const refresh = useCallback(() => (listMicrophones().then(setMics).catch(() => {}), listSpeakers().then(setSpeakers).catch(() => {})), []);
   useEffect(() => {
@@ -483,11 +495,18 @@ function SettingsSection() {
   }, [refresh]);
   const store = (k, v) => { try { sessionStorage.setItem(k, v); } catch {} };
   const sinkOk = LipSyncPlayer.canSelectOutput();
+  // A saved id that is no longer in the list (unplugged device) is shown as the default; the recorder falls back as well.
+  const known = !mic || mics.some((d) => d.deviceId === mic);
   return (
-    <Card title="Microphone and speaker" note="Choices apply to the holobox windows opened from this console in this browser session. Labels appear after the microphone has been allowed once (use Mic test).">
-      <Select label="Microphone" value={mic} options={[{ value: "", label: "System default" }, ...mics.map((d, i) => ({ value: d.deviceId, label: d.label || `Microphone ${i + 1}` }))]} onChange={(v) => (setMic(v), store("roto-mic-device", v))} testid="mic-select" />
-      <Select label="Speaker" value={spk} options={[{ value: "", label: "System default" }, ...speakers.map((d, i) => ({ value: d.deviceId, label: d.label || `Speaker ${i + 1}` }))]} onChange={(v) => (setSpk(v), store("roto-speaker-device", v))} testid="speaker-select" hint={sinkOk ? "" : "This browser cannot choose a speaker; the system default is used."} />
-      <MicTest getDeviceId={() => mic} language="en" />
-    </Card>
+    <>
+      <Card title="Microphone and speaker" note="Applies to every holobox in this browser. Names appear after the microphone has been allowed once (use Mic test).">
+        <Select label="Microphone" value={known ? mic : ""} options={[{ value: "", label: "System default" }, ...mics.filter((d) => d.deviceId).map((d, i) => ({ value: d.deviceId, label: d.label || `Microphone ${i + 1}` }))]} onChange={(v) => (setMic(v), saveMic(v))} testid="mic-select" hint={known ? "" : "The saved microphone is not connected. The system default is used."} />
+        <Select label="Speaker" value={spk} options={[{ value: "", label: "System default" }, ...speakers.filter((d) => d.deviceId).map((d, i) => ({ value: d.deviceId, label: d.label || `Speaker ${i + 1}` }))]} onChange={(v) => (setSpk(v), store("roto-speaker-device", v))} testid="speaker-select" hint={sinkOk ? "" : "This browser cannot choose a speaker; the system default is used."} />
+        <MicTest getDeviceId={() => (known ? mic : "")} language="en" />
+      </Card>
+      <Card title="Event output">
+        <a href="/holobox?output=event" target="_blank" rel="noreferrer" data-testid="event-output-link">Event output (disclosure always on)</a>
+      </Card>
+    </>
   );
 }

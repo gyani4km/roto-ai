@@ -11,7 +11,8 @@ import { loadMixamoAsset, mixamoWanted } from "../avatar/gestures/mixamoAsset.js
 import { detectClothing } from "../avatar/wardrobe/detect.js";
 import { dressCharacter } from "../avatar/wardrobe/kurta.js";
 import { buildRoom, applyCamera } from "./room.js";
-import { bufferSize, placeModel } from "./layout.js";
+import { bufferSize, fitBufferSize, placeModel, QUALITY_4K } from "./layout.js";
+import { MirrorPlayer } from "../lipsync/mirror.js";
 import { resolveHolobox, CHARACTER_DEFAULTS } from "../settings/defaults.js";
 
 const ROOM_KEYS = ["box_aspect_w", "box_aspect_h", "depth_ratio", "camera_height", "camera_zoom", "lens_fov", "character_height", "light_intensity", "light_warmth", "spot_intensity", "spot_angle", "spot_softness", "fill_level", "rim_level", "vignette", "colors"];
@@ -22,13 +23,11 @@ const same = (a, b) => ROOM_KEYS.every((k) => JSON.stringify(a[k]) === JSON.stri
  * `host` is sized by the page to the box's aspect ratio; the drawing buffer is capped (default 1080x1920)
  * unless `native` is set. Same idle, gestures, blink and lip-sync as the kiosk presentation.
  */
-export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, character, native = false, frame = "holobox" } = {}) {
-  // The console preview can show the same room in a 1920x1080 landscape frame ("laptop"); the holobox itself is 9:16.
-  const landscape = frame === "laptop";
-  const forFrame = (h) => {
-    const r = resolveHolobox(h);
-    return landscape ? { ...r, box_aspect_w: 16, box_aspect_h: 9 } : r;
-  };
+export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, character, native = false, quality = null } = {}) {
+  // quality: "4k" = a true 2160x3840 drawing buffer, scaled to fit; "fit" = a 9:16 buffer sized to the visible area (fast);
+  // null = the team setting (output preset). The picture is always 9:16.
+  const forFrame = (h) => resolveHolobox(h);
+  const mirror = new MirrorPlayer();
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -71,7 +70,8 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
     applyCamera(camera, room.layout, canvas.width || 1080, canvas.height || 1920);
   }
   function resize() {
-    const b = landscape ? { w: 1920, h: 1080 } : bufferSize(cfg.box_aspect_w / cfg.box_aspect_h, native ? "2160x3840" : cfg.output);
+    const aspect = cfg.box_aspect_w / cfg.box_aspect_h;
+    const b = quality === "4k" ? QUALITY_4K : quality === "fit" ? fitBufferSize(host.clientWidth, host.clientHeight, window.devicePixelRatio || 1, aspect) : bufferSize(aspect, native ? "2160x3840" : cfg.output);
     renderer.setSize(b.w, b.h, false);
     applyCamera(camera, room.layout, b.w, b.h);
   }
@@ -166,6 +166,7 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
     if (ambient) animation?.update(dt);
     morphs?.blink(elapsed);
     speech?.frame(dt, { ambient });
+    if (mirror.playing) mirror.frame();
     renderer.render(scene, camera);
     if (now - lastReport > 1000) {
       lastReport = now;
@@ -179,6 +180,20 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
       state = name;
       speech?.setPhase(name);
       playForState();
+    },
+    /** Mirror mode: body language follows the master's phase (gestures and mouth arrive as events). */
+    setMirrorState(name) {
+      state = name;
+      speech?.setMirrorPhase(name);
+      if (animation) animation.setBase(chr.idle_style === "lively" || name === "speaking" || name === "thinking" ? "talk" : "rest");
+      playForState();
+    },
+    setQuality(next) {
+      quality = next || null;
+      resize();
+    },
+    get mirror() {
+      return mirror;
     },
     /** Live settings from the console: rebuilds the room only when a box/light field changed. */
     setSettings({ holobox: h, character: c } = {}) {
@@ -239,6 +254,7 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
       removeEventListener("pageshow", onVisible);
       canvas.removeEventListener("webglcontextlost", lose);
       canvas.removeEventListener("webglcontextrestored", restore);
+      mirror.dispose();
       speech?.dispose();
       tilak?.dispose();
       animation?.dispose();
@@ -266,10 +282,11 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
       if (disposed) return void disposeObject(loaded);
       const clothing = detectClothing(loaded);
       wardrobe = clothing.clothed ? { kind: "native-clothed-model", materials: clothing.materials } : dressCharacter(loaded);
-      // ?hairBefore=1 reproduces the previous hair (no underlayer, cutoff 0.5) for before/after comparisons
+      // ?hairBefore=1 reproduces the previous hair (no soft pass, cutoff 0.5) for before/after comparisons
       const before = new URLSearchParams(location.search).get("hairBefore") === "1";
-      alphaCards = tuneAlphaMaterials(loaded, renderer, before ? { underlayer: false, hairCutoff: 0.5 } : {});
+      alphaCards = tuneAlphaMaterials(loaded, renderer, before ? { softPass: false, hairCutoff: 0.5 } : {});
       morphs = new MorphController(loaded);
+      mirror.setMorphs(morphs);
       if (VISEMES.some((n) => !morphs.names.includes(n))) throw new Error("Character viseme validation failed");
       try {
         tilak = createTilakFix(loaded);
@@ -289,6 +306,7 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
       });
       loaded.traverse((o) => o.isSkinnedMesh && (o.frustumCulled = false)); // rest-pose bounds must never cull a posed arm
       speech = createSpeechRig({ model, morphs, animation, player: speechPlayer, canMove: () => !lost });
+      mirror.onWord = (i) => speech?.onWord(i);
       speech.setPhase(state);
       scene.add(model);
       rebuildRoom(); // the box is sized from the real model height, feet on the floor

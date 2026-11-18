@@ -130,7 +130,7 @@ test("TTS 503 degrades to captions only; STT 503 degrades to text only", async (
   assert.match(a.c.snapshot.notice, /captions only/);
   const b = harness();
   b.calls.cancelRec = 0;
-  b.c.d.api.stt = async () => Promise.reject(new ApiError("no stt", { status: 503 }));
+  b.c.d.api.stt = async () => Promise.reject(new ApiError("Speech recognition is not configured", { status: 503 }));
   await b.c.startListening();
   await b.c.stopListening();
   assert.equal(b.c.snapshot.sttAvailable, false);

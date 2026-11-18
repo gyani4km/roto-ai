@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { api } from "../speech/client.js";
 import { ConversationController } from "./controller.js";
-import { MicRecorder, listMicrophones, listSpeakers } from "./recorder.js";
+import { MicRecorder, listMicrophones, listSpeakers, readSavedMic, saveMic } from "./recorder.js";
 import { LipSyncPlayer } from "../lipsync/player.js";
 
-const DEVICE_KEY = "roto-mic-device";
 const SPEAKER_KEY = "roto-speaker-device";
-const read = (key = DEVICE_KEY) => {
+const read = (key) => {
   try {
     return sessionStorage.getItem(key) || "";
   } catch {
@@ -17,20 +16,22 @@ const read = (key = DEVICE_KEY) => {
  * React binding. `getRig()` returns the viewer's speech rig (or undefined while loading or after a
  * WebGL failure; audio and captions still work without it).
  */
-export function useConversation({ getRig, language }) {
+export function useConversation({ getRig, language, cancelOnHide = () => true }) {
   const player = useMemo(() => {
     const p = new LipSyncPlayer();
     p.sinkId = read(SPEAKER_KEY);
     return p;
   }, []);
-  const deviceRef = useRef(read());
+  const deviceRef = useRef(readSavedMic());
+  const hideRef = useRef(cancelOnHide);
+  hideRef.current = cancelOnHide;
   const langRef = useRef(language);
   langRef.current = language;
   const rigRef = useRef(getRig);
   rigRef.current = getRig;
   const controller = useMemo(() => {
     const recorder = new MicRecorder({
-      getDeviceId: () => deviceRef.current,
+      getDeviceId: () => readSavedMic(), // always the freshest choice (the Settings tab may have changed it in another window)
       onAutoStop: () => controller.stopListening(),
     });
     const controller = new ConversationController({
@@ -70,7 +71,7 @@ export function useConversation({ getRig, language }) {
   }, [snap.state]);
   // Stop everything when the page is hidden or closed.
   useEffect(() => {
-    const hide = () => document.hidden && controller.cancel();
+    const hide = () => document.hidden && hideRef.current() && controller.cancel();
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, [controller]);
@@ -80,9 +81,7 @@ export function useConversation({ getRig, language }) {
   const setDeviceId = useCallback((id) => {
     deviceRef.current = id;
     setDeviceIdState(id);
-    try {
-      sessionStorage.setItem(DEVICE_KEY, id);
-    } catch {}
+    saveMic(id);
   }, []);
   useEffect(() => {
     refreshDevices(); // labels are generic until the user has granted mic access once

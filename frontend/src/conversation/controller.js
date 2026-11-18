@@ -110,6 +110,7 @@ export class ConversationController {
       if (turn === this.turn) this.event("FAIL", { error: micErrorMessage(error) });
       return;
     }
+    if (this.d.recorder.fellBack) this.set({ notice: "The saved microphone was not found. Using the system default microphone." });
     if (turn !== this.turn) {
       this.recording = false;
       this.d.recorder.cancel();
@@ -128,7 +129,7 @@ export class ConversationController {
     this.recording = false;
     this.micOpen = false;
     const released = this.now();
-    const { blob, durationMs } = await this.d.recorder.stop();
+    const { blob, durationMs, peak = 1 } = await this.d.recorder.stop();
     if (id !== this.turn) return;
     if (durationMs < MIN_RECORD_MS || blob.size < 200) {
       this.event("DONE", { notice: "Hold the button while you speak, then release." });
@@ -143,20 +144,18 @@ export class ConversationController {
       const text = (r.text || "").trim();
       this.set({ latency: { ...this.snap.latency, stt, sttServer: r.latency_ms } });
       if (!text) {
-        this.event("DONE", { notice: "I could not hear any words. Please try again." });
+        this.event("DONE", {
+          notice: peak < 0.02 ? "No speech heard — the microphone picked up no sound. Check it is the right one and not muted." : "No speech heard — speak a little louder, closer to the microphone, then try again.",
+        });
         return;
       }
       await this.runTurn(text, { id, signal, since: released, language: r.language });
     } catch (error) {
       if (id !== this.turn) return;
-      if (error instanceof ApiError && error.status === 503) {
-        this.event("DONE", {
-          sttAvailable: false,
-          notice: "Voice input is unavailable right now. Type your question instead.",
-        });
-        return;
-      }
-      this.fail(error, "Speech recognition failed.");
+      if (error instanceof ApiError && error.kind === "aborted") return;
+      // Not set up at all: stop offering voice. Any other failure (provider, network, bad audio) is shown as it is and retried next time.
+      const notSet = error instanceof ApiError && error.status === 503 && /not configured/i.test(error.message);
+      this.event(notSet ? "DONE" : "FAIL", notSet ? { sttAvailable: false, notice: "Voice input is not set up yet. Type your question instead." } : { error: `Speech service error: ${error?.message || "speech recognition failed."}` });
     }
   }
   // ---- text ----

@@ -39,7 +39,7 @@ export function MicTest({ getDeviceId = () => "", disabled = false, api = defaul
       return;
     }
     const track = recorder.stream?.getAudioTracks?.()[0];
-    const device = track?.label || "default microphone";
+    const device = (track?.label || "default microphone") + (recorder.fellBack ? " (the saved microphone was not found, so the default is used)" : "");
     const settings = track?.getSettings?.() || {};
     setPhase("recording");
     setLeft(seconds);
@@ -74,7 +74,8 @@ export function MicTest({ getDeviceId = () => "", disabled = false, api = defaul
       setResult({ ...base, text: (r.text || "").trim(), sttMs: Math.round(performance.now() - t1) });
     } catch (error) {
       if (id !== runRef.current) return;
-      setResult({ ...base, error: error?.status === 503 ? "Speech recognition is not set up on this machine." : error?.message || "Speech recognition failed." });
+      const notSet = error?.status === 503 && /not configured/i.test(error?.message || "");
+      setResult({ ...base, error: notSet ? "Speech service error: speech recognition is not set up on this machine." : `Speech service error: ${error?.message || "speech recognition failed."}` });
     } finally {
       if (id === runRef.current) setPhase("idle");
     }
@@ -86,7 +87,7 @@ export function MicTest({ getDeviceId = () => "", disabled = false, api = defaul
         <button data-testid="mic-test-run" onClick={run} disabled={disabled || phase !== "idle"} aria-busy={phase !== "idle"}>
           {phase === "recording" ? `● Recording… ${left}` : phase === "transcribing" ? "Transcribing…" : `Mic test (${seconds} s)`}
         </button>
-        <span className="level-meter" ref={meterRef} role="meter" aria-label="Mic test level" aria-valuemin={0} aria-valuemax={1} aria-hidden={phase !== "recording"}>
+        <span className="level-meter" ref={meterRef} role="meter" aria-label="Mic test level" aria-valuemin={0} aria-valuemax={1}>
           <i />
         </span>
       </div>
@@ -95,7 +96,7 @@ export function MicTest({ getDeviceId = () => "", disabled = false, api = defaul
       </p>
       {result && (
         <p className="muted" role="status" data-testid="mic-test-result">
-          {result.error ? result.error : result.text ? <>Heard: “{result.text}”</> : "No words heard. Speak louder or move closer."}
+          {result.error ? result.error : result.text ? <>Heard: “{result.text}”</> : result.peak < MIC_SILENT_PEAK ? "No speech heard — the microphone picked up no sound. Check it is the right one and not muted." : "No speech heard — speak louder or move closer."}
           {!result.error || result.device ? (
             <>
               <br />

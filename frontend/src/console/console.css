@@ -56,10 +56,9 @@
 .preview-tools { display: flex; gap: 8px; justify-content: center; }
 .preview-tools button { min-height: 34px; font-size: 14px; }
 .console .preview-tools button[aria-pressed="true"] { background: var(--text); color: #fff; border-color: var(--text); font-weight: 600; }
-/* The preview is scaled to fit its panel in the chosen shape (9:16 holobox or 16:9 laptop), never cropped. */
+/* The preview is always 9:16, scaled to fit its panel, never cropped. */
 .preview-frame { flex: 1; min-height: 0; min-width: 0; container-type: size; background: #1a1b1a; border-radius: var(--radius-panel); padding: 10px; display: grid; place-items: center; }
 .preview-frame iframe { display: block; border: 0; border-radius: 10px; background: #000; width: min(100cqw, calc(100cqh * 9 / 16)); height: min(100cqh, calc(100cqw * 16 / 9)); }
-.preview-frame[data-shape="laptop"] iframe { width: min(100cqw, calc(100cqh * 16 / 9)); height: min(100cqh, calc(100cqw * 9 / 16)); }
 .preview-status { margin: 0; text-align: center; font-size: 14px; color: var(--text-secondary); }
 .console-fatal { padding: 48px; font-size: 18px; }
 .confirm { max-width: 460px; border: 0; border-radius: var(--radius-panel); padding: 24px; position: fixed; top: 20vh; left: 50%; transform: translateX(-50%); z-index: 30; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
@@ -70,3 +69,9 @@
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .card > button { justify-self: start; }
 .preview-status button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--text-secondary); text-decoration: underline; font: inherit; cursor: pointer; }
+
+.level-meter { display: inline-block; width: 140px; height: 8px; background: #e3e5de; border-radius: 4px; overflow: hidden; vertical-align: middle; --level: 0; }
+.level-meter i { display: block; height: 100%; width: calc(var(--level) * 100%); background: #455327; transition: width 0.05s linear; }
+.mic-test .button-row { display: flex; gap: 12px; align-items: center; }
+.banner.is-error { margin: 8px 0 0; }
+.banner:not(.is-error) { background: #eef1e4; border-radius: var(--radius-small); padding: 10px 14px; margin: 8px 0 0; }

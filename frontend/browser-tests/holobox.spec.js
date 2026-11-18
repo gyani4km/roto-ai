@@ -241,10 +241,11 @@ test("tilak removal is a team setting and the face texture changes with it", asy
   await page.waitForFunction(() => window.__ROTO_HOLOBOX__.stage.tilak.on === false, null, { timeout: 8000 });
 });
 
-test("holobox opaque hair underlayer exists and arms stay visible through the idle", async ({ page }) => {
+test("holobox two-pass hair (no scalp cap mesh) exists and arms stay visible through the idle", async ({ page }) => {
   await mockSpeech(page);
   await holobox(page);
-  expect(await page.evaluate(() => window.__ROTO_HOLOBOX__.stage.inspect().alphaCards.underlayer?.drawCalls)).toBe(1);
+  expect(await page.evaluate(() => window.__ROTO_HOLOBOX__.stage.inspect().alphaCards.softPass?.passes)).toBe(2);
+  expect(await page.evaluate(() => { let n = 0; window.__ROTO_HOLOBOX__.stage.model.traverse((o) => o.name === "hair_scalp_cap" && n++); return n; })).toBe(0);
   // sample the left upper-arm area over several seconds of idle: it must never go dark (the shirt sleeve is bright)
   const lum = () => page.evaluate(() => new Promise((res) => requestAnimationFrame(() => res(window.__ROTO_HOLOBOX__.stage.layout.W))));
   await lum();

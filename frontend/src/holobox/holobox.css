@@ -38,3 +38,7 @@ html, body, #root { height: 100%; margin: 0; }
 .holobox-loading.on-light .holobox-spinner { border-color: rgba(40, 42, 38, 0.2); border-top-color: rgba(40, 42, 38, 0.8); }
 @keyframes holobox-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .holobox-spinner { animation-duration: 3s; } }
+.holobox-hint {
+  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); z-index: 15; margin: 0; padding: 8px 14px; border-radius: 999px;
+  background: rgba(20, 22, 20, 0.88); color: #f1f2ee; font: 600 14px/1.3 system-ui, sans-serif; pointer-events: none; text-align: center; max-width: 90vw;
+}
