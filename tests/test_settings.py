@@ -83,7 +83,9 @@ def test_secrets_are_never_stored(patch):
     assert not ts.store.path.exists()
 
 
-def test_disclosure_off_needs_an_explicit_confirm_and_can_return_on():
+def test_disclosure_is_off_by_default_and_switching_it_off_needs_a_confirm():
+    assert ts.DEFAULTS['holobox']['disclosure'] is False
+    assert put({'holobox': {'disclosure': True}}).json()['settings']['holobox']['disclosure'] is True
     r = put({'holobox': {'disclosure': False}})
     assert r.status_code == 422 and 'confirm' in json.dumps(r.json())
     assert client.get('/api/settings').json()['settings']['holobox']['disclosure'] is True

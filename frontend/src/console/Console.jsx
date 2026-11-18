@@ -16,10 +16,20 @@ const TABS = [
   ["voice", "Voice"],
   ["languages", "Languages"],
   ["character", "Character"],
-  ["demo", "Scripted demo"],
-  ["devices", "Devices"],
-  ["diagnostics", "Diagnostics"],
+  ["settings", "Settings"],
 ];
+// Live preview shape: the holobox (9:16, default) or a 1920x1080 laptop frame. Remembered in this browser.
+const PREVIEW_FRAMES = [
+  ["holobox", "Holobox 9:16"],
+  ["laptop", "Laptop 16:9"],
+];
+const readFrame = () => {
+  try {
+    return localStorage.getItem("roto-preview-frame") === "laptop" ? "laptop" : "holobox";
+  } catch {
+    return "holobox";
+  }
+};
 const LANG_NAMES = { en: "English", te: "Telugu", hi: "Hindi" };
 const SAMPLES = {
   en: "Hello, I am ROTO. This is how I sound.",
@@ -66,6 +76,7 @@ export default function Console() {
   const [save, setSave] = useState({ state: "idle", errors: [] });
   const [live, setLive] = useState({ state: "idle", ready: false, fps: 0, buffer: null, gestures: [], notice: "" });
   const [previewKey, setPreviewKey] = useState(0);
+  const [shape, setShape] = useState(readFrame);
   const [now, setNow] = useState(() => Date.now());
   const seen = useRef(0); // when the preview last reported; 0 = not since it (re)loaded
   const [confirmOff, setConfirmOff] = useState(false);
@@ -100,6 +111,13 @@ export default function Console() {
     seen.current = 0;
     setLive({ state: "idle", ready: false, fps: 0, buffer: null, gestures: [], notice: "" });
     setPreviewKey((k) => k + 1);
+  };
+  const pickFrame = (id) => {
+    try {
+      localStorage.setItem("roto-preview-frame", id);
+    } catch {}
+    setShape(id);
+    reloadPreview();
   };
   const choose = (id) => {
     setTab(id);
@@ -143,15 +161,16 @@ export default function Console() {
     voice: <VoiceSection s={s} change={change} />,
     languages: <LanguagesSection s={s} change={change} />,
     character: <CharacterSection s={s} change={change} live={shown} onDisclosureOff={() => setConfirmOff(true)} />,
-    demo: <DemoSection s={s} change={change} cmd={cmd} />,
-    devices: <DevicesSection />,
-    diagnostics: <DiagnosticsSection live={shown} />,
+    settings: <SettingsSection />,
   };
   return (
     <div className="console">
       <header className="console-header">
-        <div>
-          <h1>ROTO control console</h1>
+        <div className="console-title">
+          <div className="brand">
+            <img src="/brand/rotomaker-logo.png" alt="RotoMaker" className="brand-logo" />
+            <h1>Control console</h1>
+          </div>
           <p>Everything the team can change, without code. Changes save by themselves and apply live to the open holobox.</p>
         </div>
         <div className="console-header-actions">
@@ -182,16 +201,21 @@ export default function Console() {
         )}
         <h2>{TABS.find(([id]) => id === tab)[1]}</h2>
         {sections[tab]}
-        {tab !== "diagnostics" && (
-          <p className="reset-row">
-            <button type="button" onClick={async () => confirm("Reset every setting to its default?") && setBody(await resetSettings())}>Reset all settings to defaults</button>
-          </p>
-        )}
+        <p className="reset-row">
+          <button type="button" onClick={async () => confirm("Reset every setting to its default?") && setBody(await resetSettings())}>Reset all settings to defaults</button>
+        </p>
       </main>
-      {/* Always mounted (hidden, not removed, on Diagnostics) so the character is never reloaded by switching tabs. */}
-      <aside className="console-preview" aria-label="Holobox preview" hidden={tab === "diagnostics"}>
-        <div className="preview-frame">
-          <iframe key={previewKey} ref={frame} title="Holobox preview" src="/holobox?embed=1" allow="microphone; autoplay; fullscreen" data-testid="preview-frame" />
+      {/* Always mounted so the character is never reloaded by switching tabs. */}
+      <aside className="console-preview" aria-label="Holobox preview">
+        <div className="preview-tools" role="group" aria-label="Preview shape">
+          {PREVIEW_FRAMES.map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={shape === id} data-testid={`frame-${id}`} onClick={() => shape !== id && pickFrame(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="preview-frame" data-shape={shape}>
+          <iframe key={previewKey} ref={frame} title="Holobox preview" src={`/holobox?embed=1${shape === "laptop" ? "&frame=laptop" : ""}`} allow="microphone; autoplay; fullscreen" data-testid="preview-frame" />
         </div>
         <p className="preview-status" data-testid="preview-status" data-ready={shown.ready ? "1" : "0"}>
           {shown.ready
@@ -437,50 +461,15 @@ function CharacterSection({ s, change, live, onDisclosureOff }) {
         <Toggle label="Tiny listening indicator" checked={h.listening_indicator} onChange={(v) => hb({ listening_indicator: v })} hint="A small dot while the mic is open. Off by default." />
         <Slider label="Hide the cursor after" min={0.5} max={30} step={0.5} unit=" s" value={h.cursor_hide_s} onChange={(v) => hb({ cursor_hide_s: v })} />
       </Card>
-      <Card title="AI disclosure" note="Project rule: the public event display must carry the AI disclosure. It is on by default.">
-        <Toggle label="Show the disclosure on the holobox" checked={h.disclosure} onChange={(v) => (v ? hb({ disclosure: true }) : onDisclosureOff())} testid="disclosure-toggle" hint="Turning it off asks for confirmation and is for internal preview only. /holobox?output=event ignores this setting and always shows it." />
+      <Card title="AI disclosure" note="Off by default. The public event display must carry the disclosure: /holobox?output=event always shows it, whatever this setting says.">
+        <Toggle label="Show the disclosure on the holobox" checked={h.disclosure} onChange={(v) => (v ? hb({ disclosure: true }) : onDisclosureOff())} testid="disclosure-toggle" hint="Turning it off asks for confirmation. Keep it on for any public or event output." />
         <Text label="Disclosure text" value={h.disclosure_text} maxLength={160} onChange={(v) => hb({ disclosure_text: v })} testid="disclosure-text" />
       </Card>
     </>
   );
 }
 
-function DemoSection({ s, change, cmd }) {
-  const items = s.scripted_demo;
-  const put = (next) => change({ scripted_demo: next });
-  const move = (i, d) => {
-    const next = [...items];
-    const j = i + d;
-    if (j < 0 || j >= next.length) return;
-    [next[i], next[j]] = [next[j], next[i]];
-    put(next);
-  };
-  return (
-    <Card title="Question and answer list" note="Prepared answers spoken through the real voice and lip-sync, with no AI. Marked “Scripted demo” in diagnostics.">
-      <div className="row">
-        <button type="button" className="primary" onClick={() => cmd("script")} disabled={!items.length} data-testid="demo-play-all">Play all</button>
-        <button type="button" onClick={() => cmd("stop")}>Stop</button>
-        <button type="button" onClick={() => put([...items, { q: "New question", a: "New answer." }])} data-testid="demo-add">Add a question</button>
-      </div>
-      <ol className="demo-list" data-testid="demo-list">
-        {items.map((it, i) => (
-          <li key={i}>
-            <Text label={`Question ${i + 1}`} value={it.q} maxLength={300} onChange={(v) => put(items.map((x, k) => (k === i ? { ...x, q: v } : x)))} />
-            <Text label="Answer" multiline rows={3} maxLength={1200} value={it.a} onChange={(v) => put(items.map((x, k) => (k === i ? { ...x, a: v } : x)))} />
-            <div className="row">
-              <button type="button" onClick={() => cmd("script", { index: i })}>Play</button>
-              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move question ${i + 1} up`}>Up</button>
-              <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1} aria-label={`Move question ${i + 1} down`}>Down</button>
-              <button type="button" className="danger" onClick={() => put(items.filter((_, k) => k !== i))}>Remove</button>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </Card>
-  );
-}
-
-function DevicesSection() {
+function SettingsSection() {
   const [mics, setMics] = useState([]);
   const [speakers, setSpeakers] = useState([]);
   const read = (k) => { try { return sessionStorage.getItem(k) || ""; } catch { return ""; } };
@@ -500,16 +489,5 @@ function DevicesSection() {
       <Select label="Speaker" value={spk} options={[{ value: "", label: "System default" }, ...speakers.map((d, i) => ({ value: d.deviceId, label: d.label || `Speaker ${i + 1}` }))]} onChange={(v) => (setSpk(v), store("roto-speaker-device", v))} testid="speaker-select" hint={sinkOk ? "" : "This browser cannot choose a speaker; the system default is used."} />
       <MicTest getDeviceId={() => mic} language="en" />
     </Card>
-  );
-}
-
-function DiagnosticsSection({ live }) {
-  return (
-    <>
-      <p className="muted" data-testid="diag-live">
-        Live holobox: {live.ready ? `${live.state}, ${live.fps} fps, p95 ${Number(live.p95 || 0).toFixed(1)} ms, buffer ${live.buffer ? live.buffer.join(" × ") : "-"}` : "not running (open the Live preview or a holobox window)"}
-      </p>
-      <iframe className="diag-frame" title="Developer diagnostics" src="/developer" data-testid="diag-frame" />
-    </>
   );
 }

@@ -47,7 +47,7 @@ DEFAULTS: dict = {
         'mixamo': True,
     },
     'holobox': {
-        'disclosure': True,
+        'disclosure': False,
         'disclosure_text': DISCLOSURE_TEXT,
         'theme': 'black',
         'output': '1080x1920',

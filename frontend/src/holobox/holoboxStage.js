@@ -22,7 +22,13 @@ const same = (a, b) => ROOM_KEYS.every((k) => JSON.stringify(a[k]) === JSON.stri
  * `host` is sized by the page to the box's aspect ratio; the drawing buffer is capped (default 1080x1920)
  * unless `native` is set. Same idle, gestures, blink and lip-sync as the kiosk presentation.
  */
-export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, character, native = false } = {}) {
+export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, character, native = false, frame = "holobox" } = {}) {
+  // The console preview can show the same room in a 1920x1080 landscape frame ("laptop"); the holobox itself is 9:16.
+  const landscape = frame === "laptop";
+  const forFrame = (h) => {
+    const r = resolveHolobox(h);
+    return landscape ? { ...r, box_aspect_w: 16, box_aspect_h: 9 } : r;
+  };
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -39,8 +45,9 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
   const control = context.getExtension("WEBGL_lose_context");
   const debug = context.getExtension("WEBGL_debug_renderer_info");
   const gpu = debug ? context.getParameter(debug.UNMASKED_RENDERER_WEBGL) : context.getParameter(context.RENDERER);
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-  let cfg = resolveHolobox(holobox);
+  // The OS "reduce motion" flag is deliberately NOT read here: this is the output screen, and a frozen character
+  // (idle, gestures, head, eyes, blink all off) looked broken. The developer viewer never honoured it either.
+  let cfg = forFrame(holobox);
   let chr = { ...CHARACTER_DEFAULTS, ...(character || {}) };
   let room, model, modelHeight = 1.8;
   let animation, morphs, speech, alphaCards, wardrobe, tilak = null, mixamoStatus = null;
@@ -64,7 +71,7 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
     applyCamera(camera, room.layout, canvas.width || 1080, canvas.height || 1920);
   }
   function resize() {
-    const b = bufferSize(cfg.box_aspect_w / cfg.box_aspect_h, native ? "2160x3840" : cfg.output);
+    const b = landscape ? { w: 1920, h: 1080 } : bufferSize(cfg.box_aspect_w / cfg.box_aspect_h, native ? "2160x3840" : cfg.output);
     renderer.setSize(b.w, b.h, false);
     applyCamera(camera, room.layout, b.w, b.h);
   }
@@ -73,10 +80,9 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
   observer.observe(host);
   resize();
 
-  const idleOn = () => !reduced.matches && !lost;
   function playForState() {
     if (!animation) return;
-    if (!idleOn()) {
+    if (lost) {
       animation.stop();
       speech?.releaseBones();
       return;
@@ -127,8 +133,6 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
   }
   canvas.addEventListener("webglcontextlost", lose);
   canvas.addEventListener("webglcontextrestored", restore);
-  const motionChange = () => ((last = 0), playForState());
-  reduced.addEventListener("change", motionChange);
 
   // A hidden window or iframe pauses drawing. On the way back, redraw at once (and forget the paused gap) so the
   // picture is never a stale or empty frame while the next animation frame is still pending.
@@ -157,10 +161,10 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
     if (last) metrics.add(now - last);
     last = now;
     const still = chr.idle_style === "still" && state === "idle";
-    const ambient = !reduced.matches && !still;
+    const ambient = !still;
     elapsed += dt;
     if (ambient) animation?.update(dt);
-    if (!reduced.matches) morphs?.blink(elapsed);
+    morphs?.blink(elapsed);
     speech?.frame(dt, { ambient });
     renderer.render(scene, camera);
     if (now - lastReport > 1000) {
@@ -179,7 +183,7 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
     /** Live settings from the console: rebuilds the room only when a box/light field changed. */
     setSettings({ holobox: h, character: c } = {}) {
       if (h) {
-        const next = resolveHolobox(h);
+        const next = forFrame(h);
         const rebuild = !same(cfg, next) || next.output !== cfg.output;
         cfg = next;
         if (rebuild) {
@@ -230,7 +234,6 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
       disposed = true;
       cancelAnimationFrame(raf);
       observer.disconnect();
-      reduced.removeEventListener("change", motionChange);
       document.removeEventListener("visibilitychange", onVisible);
       removeEventListener("focus", onVisible);
       removeEventListener("pageshow", onVisible);
@@ -285,7 +288,7 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
         for (const m of [].concat(o.material)) if (m?.isMeshPhysicalMaterial && /shirt|trouser/i.test(m.name || o.name)) m.roughness = Math.max(m.roughness, 0.92);
       });
       loaded.traverse((o) => o.isSkinnedMesh && (o.frustumCulled = false)); // rest-pose bounds must never cull a posed arm
-      speech = createSpeechRig({ model, morphs, animation, player: speechPlayer, canMove: () => !reduced.matches && !lost });
+      speech = createSpeechRig({ model, morphs, animation, player: speechPlayer, canMove: () => !lost });
       speech.setPhase(state);
       scene.add(model);
       rebuildRoom(); // the box is sized from the real model height, feet on the floor

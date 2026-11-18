@@ -37,8 +37,10 @@ test.afterAll(async ({ request }) => resetSettings(request));
 
 test("console loads at / with every section and key status (yes/no only)", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "ROTO control console" })).toBeVisible();
-  for (const id of ["preview", "persona", "voice", "languages", "character", "demo", "devices", "diagnostics"]) await expect(page.getByTestId(`tab-${id}`)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Control console" })).toBeVisible();
+  for (const id of ["preview", "persona", "voice", "languages", "character", "settings"]) await expect(page.getByTestId(`tab-${id}`)).toBeVisible();
+  await expect(page.getByTestId("tab-demo")).toHaveCount(0);
+  await expect(page.getByTestId("tab-diagnostics")).toHaveCount(0);
   await expect(page.getByTestId("key-status")).toContainText(/configured|not set/);
   await expect(page.getByTestId("open-holobox")).toBeVisible();
   const html = await page.content();
@@ -72,15 +74,11 @@ test("a key-like value is refused and nothing is stored", async ({ page, request
 test("every console section renders; evidence shots", async ({ page }) => {
   await mockSpeech(page);
   await page.goto("/");
-  for (const [id, shot] of [["voice", "3-voice"], ["languages", "4-languages"], ["character", "5-character"], ["demo", "6-scripted-demo"], ["devices", "7-devices"]]) {
+  for (const [id, shot] of [["voice", "3-voice"], ["languages", "4-languages"], ["character", "5-character"], ["settings", "7-settings"]]) {
     await page.getByTestId(`tab-${id}`).click();
     await page.waitForTimeout(id === "voice" ? 1500 : 300);
     await page.screenshot({ path: path.join(EVIDENCE, `console-${shot}.png`), fullPage: false });
   }
-  await page.getByTestId("tab-diagnostics").click();
-  await expect(page.getByTestId("diag-frame")).toBeVisible();
-  await page.waitForTimeout(2500);
-  await page.screenshot({ path: path.join(EVIDENCE, "console-8-diagnostics.png") });
 });
 
 test("voice section lists Google voices per language and plays a sample", async ({ page }) => {
@@ -97,12 +95,12 @@ test("voice section lists Google voices per language and plays a sample", async 
   expect(spoke.voice).toBe("en-IN-Chirp3-HD-Aoede");
 });
 
-test("holobox route: no visible UI text except the disclosure, no scrollbars, cursor hides", async ({ page }) => {
+test("holobox route: no visible UI text (disclosure off by default), no scrollbars, cursor hides", async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
   await mockSpeech(page);
   await holobox(page);
   const text = await page.evaluate(() => document.body.innerText.trim());
-  expect(text).toBe("AI-generated digital representation — not a live person");
+  expect(text).toBe(""); // the disclosure is off by default
   expect(await page.locator("button, input, textarea, a, h1, h2, h3, [role=button]").count()).toBe(0);
   const dims = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, cw: innerWidth, ch: innerHeight, canvas: [document.querySelector("canvas").width, document.querySelector("canvas").height] }));
   expect(dims.sw).toBeLessThanOrEqual(dims.cw);
@@ -114,12 +112,17 @@ test("holobox route: no visible UI text except the disclosure, no scrollbars, cu
   await page.screenshot({ path: path.join(EVIDENCE, "holobox-black-idle-1080x1920.png") });
 });
 
-test("disclosure: on by default, off needs a confirm in the console, event output always shows it", async ({ page, request }) => {
+test("disclosure: off by default, on from the console, off needs a confirm, event output always shows it", async ({ page, request }) => {
+  const api = async () => (await (await request.get(`${BASE}/api/settings`)).json()).settings.holobox.disclosure;
+  expect(await api()).toBe(false);
   await page.goto("/#character");
-  await page.getByTestId("disclosure-toggle").click();
+  await page.getByTestId("disclosure-toggle").click(); // on: no confirm needed
+  await expect(page.getByTestId("save-state")).toHaveText(/Saved/);
+  expect(await api()).toBe(true);
+  await page.getByTestId("disclosure-toggle").click(); // off: asks first
   await expect(page.getByTestId("disclosure-confirm")).toBeVisible();
   await page.getByRole("button", { name: "Keep it on" }).click();
-  expect((await (await request.get(`${BASE}/api/settings`)).json()).settings.holobox.disclosure).toBe(true);
+  expect(await api()).toBe(true);
   await page.getByTestId("disclosure-toggle").click();
   await page.getByTestId("disclosure-confirm-off").click();
   await expect(page.getByTestId("save-state")).toHaveText(/Saved/);
@@ -202,7 +205,7 @@ test("console test-talk drives the embedded holobox", async ({ page }) => {
   await expect(page.getByTestId("live-state")).toContainText(/thinking|speaking/, { timeout: 15000 });
   await page.getByTestId("console-stop").click();
   await expect(page.getByTestId("live-state")).toContainText("idle", { timeout: 5000 });
-  await expect(frame.locator("[data-testid=disclosure]")).toBeVisible();
+  await expect(frame.locator("[data-testid=disclosure]")).toHaveCount(0); // off by default
 });
 
 test("axe: no serious or critical violations on the console", async ({ page }) => {

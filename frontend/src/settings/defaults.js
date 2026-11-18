@@ -1,7 +1,7 @@
 // Fallback holobox look, used only when /api/settings cannot be reached. The source of truth is
 // config/team-settings.default.json (a unit test keeps this copy identical to it).
 export const HOLOBOX_DEFAULTS = {
-  disclosure: true,
+  disclosure: false,
   disclosure_text: "AI-generated digital representation — not a live person",
   theme: "black",
   output: "1080x1920",

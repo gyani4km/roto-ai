@@ -45,11 +45,11 @@ export function tuneAlphaMaterials(root, renderer, { underlayer = true, hairCuto
 
 /**
  * Opaque dark hair-coloured scalp cap beneath the hair cards, so nothing behind the head shows between strands.
- * It is one extra draw (a small ellipsoid, no alpha) fitted from the hair mesh's bounding box, scaled to ~85% so it
- * stays inside the hair and inside the skull at the forehead, ears and neck, and parented to the head bone so it
- * follows the head. Returns {mesh, radii, ...} or null when there is no hair mesh or head bone.
+ * It is one extra draw (an ellipsoid, no alpha, matte #1a1512) fitted from the hair mesh's bounding box at ~97% so it
+ * covers the whole top of the scalp under the hair cards, without poking out at the forehead or ears. It is parented
+ * to the head bone so it follows the head. Returns {mesh, radii, ...} or null when there is no hair mesh or head bone.
  */
-export function addHairUnderlayer(root, { color = 0x14110f, fit = 0.85 } = {}) {
+export function addHairUnderlayer(root, { color = 0x1a1512, fit = 0.97 } = {}) {
   let hair = null,
     head = null;
   root.traverse((o) => {
@@ -62,7 +62,7 @@ export function addHairUnderlayer(root, { color = 0x14110f, fit = 0.85 } = {}) {
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   const geometry = new THREE.SphereGeometry(1, 32, 20, 0, Math.PI * 2, 0, THREE.MathUtils.degToRad(100));
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, side: THREE.FrontSide });
+  const material = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0, side: THREE.FrontSide });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "hair_scalp_cap";
   mesh.userData.hairUnderlayer = true;

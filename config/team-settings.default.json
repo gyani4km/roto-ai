@@ -35,7 +35,7 @@
     "mixamo": true
   },
   "holobox": {
-    "disclosure": true,
+    "disclosure": false,
     "disclosure_text": "AI-generated digital representation — not a live person",
     "theme": "black",
     "output": "1080x1920",

@@ -23,6 +23,8 @@ export default function Holobox() {
   const query = useMemo(() => new URLSearchParams(location.search), []);
   const embed = query.get("embed") === "1";
   const forceDisclosure = query.get("output") === "event";
+  // ?frame=laptop: the console's 16:9 preview (a 1920x1080 landscape room). The output holobox is always 9:16.
+  const laptop = query.get("frame") === "laptop";
   const [team, setTeam] = useState({ holobox: null, character: null, languages: null, scripted: null });
   const [visual, setVisual] = useState({ ready: false });
   // Bumped to rebuild the 3D stage from scratch (failed start, or a lost WebGL context that did not come back).
@@ -35,7 +37,10 @@ export default function Holobox() {
     teamRef = useRef(team),
     statusRef = useRef({});
   teamRef.current = team;
-  const cfg = useMemo(() => resolveHolobox(team.holobox || {}), [team.holobox]);
+  const cfg = useMemo(() => {
+    const r = resolveHolobox(team.holobox || {});
+    return laptop ? { ...r, box_aspect_w: 16, box_aspect_h: 9 } : r;
+  }, [team.holobox, laptop]);
   const language = team.languages?.default || "en";
   const { controller, snap, player } = useConversation({ getRig: () => stage.current?.speech, language });
   controller.d.scripted = () => teamRef.current.scripted;
@@ -78,6 +83,7 @@ export default function Holobox() {
               holobox: teamRef.current.holobox,
               character: teamRef.current.character,
               native: query.get("buffer") === "native",
+              frame: laptop ? "laptop" : "holobox",
             },
           );
           stage.current = instance;
@@ -222,12 +228,12 @@ export default function Holobox() {
   // native: a true 1080x1920 (or 4K) CSS-pixel booth for the portrait event screen.
   const box = useMemo(() => {
     const aspect = cfg.box_aspect_w / cfg.box_aspect_h;
-    if (cfg.fit === "native") {
+    if (cfg.fit === "native" && !laptop) {
       const [w, h] = OUTPUTS[cfg.output] || OUTPUTS["1080x1920"];
       return Math.abs(aspect - w / h) < 1e-6 ? { w, h } : { w: Math.round(h * aspect), h };
     }
     return fitBox(win.w, win.h, aspect);
-  }, [win, cfg.box_aspect_w, cfg.box_aspect_h, cfg.fit, cfg.output]);
+  }, [win, cfg.box_aspect_w, cfg.box_aspect_h, cfg.fit, cfg.output, laptop]);
   const lightBox = luminance(cfg.colors.wall) > 0.45;
   const showDisclosure = (cfg.disclosure || forceDisclosure) && team.holobox !== null;
   const listening = snap.state === "listening";

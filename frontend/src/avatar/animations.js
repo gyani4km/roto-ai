@@ -186,7 +186,8 @@ export class AnimationController {
   playGesture(id, { intensity, hold = false, fadeIn = FADE.in, fadeOut = FADE.out } = {}) {
     const def = this.registry.get(id);
     if (!def?.clip || !this.library.rig || !this.enabled) return false;
-    const peak = intensity ?? this.intensity;
+    // A caller's own strength (the listening nod) is capped by the live intensity setting: at 0 nothing moves.
+    const peak = Math.min(intensity ?? this.intensity, this.intensity);
     if (peak <= 0) return false;
     if (!this.baseKind) this.setBase("rest", 0);
     if (this.gesture) this.endGesture(FADE.cancel);
