@@ -350,7 +350,7 @@ async function main() {
   });
 
   // ---------- Each console tab ----------
-  const tabs = ["preview", "persona", "voice", "languages", "character", "demo", "devices", "diagnostics"];
+  const tabs = ["preview", "persona", "voice", "languages", "character", "settings"];
   for (const [i, t] of tabs.entries()) {
     const id = `T-0${i + 1}`;
     await runCase(id, `Console tab "${t}" loads with no console errors`, async () => {
@@ -453,6 +453,10 @@ async function main() {
   const HEAD = [0.3, 0.04, 0.7, 0.3];
   globalThis.__speech = null;
   await runCase("L-01", "Typed question in console preview gives a reply and audio", async () => {
+    // The preview and a separate window share one conversation and the window plays the sound; this case is about the
+    // preview talking by itself, so close any holobox window first (the preview takes over as master).
+    for (const w of ctx.pages()) if (!w.isClosed() && w !== consolePage && w.url().includes("/holobox")) await w.close();
+    await sleep(1500);
     await consolePage.getByTestId("tab-preview").click();
     await consolePage.bringToFront();
     await waitLive(consolePage, consoleStage, 30000, "L01-pre");
@@ -516,15 +520,12 @@ async function main() {
   });
 
   // ---------- Diagnostics ----------
-  await runCase("D-01", "Diagnostics tab embeds /developer and reports state", async () => {
-    await consolePage.getByTestId("tab-diagnostics").click();
-    await consolePage.getByTestId("diag-frame").waitFor();
-    await sleep(30000);
-    const diagLive = await consolePage.getByTestId("diag-live").textContent().catch(() => "");
-    const s = await sampleCanvas(consolePage.frameLocator('[data-testid="diag-frame"]').locator("canvas"), "D01");
-    await consolePage.screenshot({ path: shotPath("D01-diagnostics") });
-    const counters = await glCounters(consolePage);
-    return { status: "PASS", details: { diagLive: diagLive.trim().slice(0, 200), diagCanvas: pub(s), counters }, note: `diag canvas ${s.error ? "not found" : s.blank ? "blank" : "live"}` };
+  await runCase("D-01", "Settings tab has the microphone picker, Mic test and the event output link", async () => {
+    await consolePage.getByTestId("tab-settings").click();
+    await consolePage.getByTestId("mic-test-run").waitFor();
+    const ok = (await consolePage.getByTestId("mic-select").count()) === 1 && (await consolePage.getByTestId("event-output-link").count()) === 1;
+    await consolePage.screenshot({ path: shotPath("D01-settings") });
+    return { status: ok ? "PASS" : "FAIL", details: {}, note: ok ? "mic select, Mic test, event link present" : "missing control" };
   });
 
   // ---------- Cross-cutting ----------
