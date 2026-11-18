@@ -7,7 +7,7 @@ import { disposeObject } from "../avatar/dispose.js";
 import { createSpeechRig } from "../avatar/speechRig.js";
 import { tuneAlphaMaterials } from "../avatar/alphaMaterials.js";
 import { createTilakFix } from "../avatar/faceFix.js";
-import { attachMixamo } from "../avatar/gestures/mixamoAsset.js";
+import { loadMixamoAsset, mixamoWanted } from "../avatar/gestures/mixamoAsset.js";
 import { detectClothing } from "../avatar/wardrobe/detect.js";
 import { dressCharacter } from "../avatar/wardrobe/kurta.js";
 import { buildRoom, applyCamera } from "./room.js";
@@ -45,9 +45,9 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
   let room, model, modelHeight = 1.8;
   let animation, morphs, speech, alphaCards, wardrobe, tilak = null, mixamoStatus = null;
   let raf, last = 0, elapsed = 0, lastReport = 0;
-  let state = "idle", lost = false, disposed = false, ready = false, error = null;
+  let state = "idle", lost = false, disposed = false, ready = false, error = null, loading = 0;
   const report = (extra = {}) =>
-    onStatus?.({ ready, lost, gpu, buffer: [canvas.width, canvas.height], metrics: metrics.read(), error, wardrobe, mixamo: !!animation?.mixamo, ...extra });
+    onStatus?.({ ready, lost, loading, gpu, buffer: [canvas.width, canvas.height], metrics: metrics.read(), error, wardrobe, mixamo: !!animation?.mixamo, ...extra });
 
   function rebuildRoom() {
     if (room) {
@@ -122,12 +122,29 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
     lost = false;
     last = 0;
     playForState();
+    paintNow();
     report({ error: null });
   }
   canvas.addEventListener("webglcontextlost", lose);
   canvas.addEventListener("webglcontextrestored", restore);
   const motionChange = () => ((last = 0), playForState());
   reduced.addEventListener("change", motionChange);
+
+  // A hidden window or iframe pauses drawing. On the way back, redraw at once (and forget the paused gap) so the
+  // picture is never a stale or empty frame while the next animation frame is still pending.
+  function paintNow() {
+    if (disposed || lost || !model) return;
+    try {
+      last = 0;
+      renderer.render(scene, camera);
+    } catch {}
+  }
+  const onVisible = () => {
+    if (!document.hidden) paintNow();
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  addEventListener("focus", onVisible);
+  addEventListener("pageshow", onVisible);
 
   function tick(now) {
     if (disposed) return;
@@ -214,6 +231,9 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
       cancelAnimationFrame(raf);
       observer.disconnect();
       reduced.removeEventListener("change", motionChange);
+      document.removeEventListener("visibilitychange", onVisible);
+      removeEventListener("focus", onVisible);
+      removeEventListener("pageshow", onVisible);
       canvas.removeEventListener("webglcontextlost", lose);
       canvas.removeEventListener("webglcontextrestored", restore);
       speech?.dispose();
@@ -227,8 +247,18 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
   };
   api.ready = (async () => {
     let loaded;
+    // The gesture clips (0.4 MB) load in parallel with the 18 MB character instead of after it; never fatal.
+    const wantMixamo = chr.mixamo !== false && mixamoWanted();
+    const mixamoLoad = wantMixamo ? loadMixamoAsset().catch((e) => ({ error: String(e?.message || e) })) : null;
     try {
-      const gltf = await new GLTFLoader().loadAsync("/api/avatar/model");
+      const gltf = await new GLTFLoader().loadAsync("/api/avatar/model", (e) => {
+        if (!e.lengthComputable || disposed) return;
+        const f = Math.min(0.95, (e.loaded / e.total) * 0.95);
+        if (f - loading >= 0.03) {
+          loading = f;
+          report();
+        }
+      });
       loaded = gltf.scene;
       if (disposed) return void disposeObject(loaded);
       const clothing = detectClothing(loaded);
@@ -261,24 +291,33 @@ export function createHoloboxStage(host, onStatus, { speechPlayer, holobox, char
       rebuildRoom(); // the box is sized from the real model height, feet on the floor
       resize();
       ready = true;
+      loading = 1;
       applyCharacter();
       playForState();
+      paintNow();
       report({ clips: animation.clips.map((c) => c.name), gestures: api.gestureList() });
       const target = animation;
       // Retargeted Mixamo clips: team setting character.mixamo (default on); ?mixamo=off forces them off.
-      const wantMixamo = chr.mixamo !== false && new URLSearchParams(location.search).get("mixamo") !== "off";
-      if (wantMixamo) attachMixamo(target).then((r) => {
-        if (disposed || animation !== target) return;
-        mixamoStatus = r;
-        if (r.ok) {
-          playForState();
-          applyCharacter();
-          report({ clips: animation.clips.map((c) => c.name), gestures: api.gestureList() });
-        }
-      });
+      if (mixamoLoad) {
+        mixamoLoad.then((m) => {
+          if (disposed || animation !== target || !m || m.error) return;
+          try {
+            const { installed } = animation.installMixamo(m.clips, m.manifest);
+            mixamoStatus = { ok: installed.length > 0, installed };
+            if (installed.length) {
+              playForState();
+              applyCharacter();
+              report({ clips: animation.clips.map((c) => c.name), gestures: api.gestureList() });
+            }
+          } catch (e) {
+            console.warn("[mixamo] skipped:", e.message);
+          }
+        });
+      }
     } catch (cause) {
       if (loaded && loaded !== model) disposeObject(loaded);
       if (disposed) return;
+      console.error("[holobox] character load failed:", cause);
       error = `Character unavailable: ${cause.message}`;
       report();
     }

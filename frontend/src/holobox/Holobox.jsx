@@ -25,6 +25,8 @@ export default function Holobox() {
   const forceDisclosure = query.get("output") === "event";
   const [team, setTeam] = useState({ holobox: null, character: null, languages: null, scripted: null });
   const [visual, setVisual] = useState({ ready: false });
+  // Bumped to rebuild the 3D stage from scratch (failed start, or a lost WebGL context that did not come back).
+  const [attempt, setAttempt] = useState(0);
   const [win, setWin] = useState(() => visibleWindow(window, screen));
   const [overlay, setOverlay] = useState(false);
   const [cursorHidden, setCursorHidden] = useState(false);
@@ -69,7 +71,7 @@ export default function Holobox() {
             (v) => {
               if (!alive) return;
               statusRef.current = v;
-              setVisual((old) => (old.ready === v.ready && old.error === v.error && old.gestures === v.gestures ? old : v));
+              setVisual((old) => (old.ready === v.ready && old.error === v.error && old.gestures === v.gestures && old.loading === v.loading ? old : v));
             },
             {
               speechPlayer: player,
@@ -81,18 +83,41 @@ export default function Holobox() {
           stage.current = instance;
           instance.setState(controller.snapshot.state);
           window.__ROTO_HOLOBOX__ = { stage: instance, controller };
-        } catch {
+        } catch (e) {
+          console.error("[holobox] could not start the 3D stage:", e);
+          instance?.dispose();
+          host.current?.replaceChildren();
           setVisual({ ready: false, error: "webgl-unavailable" });
         }
       })
-      .catch(() => alive && setVisual({ ready: false, error: "load-failed" }));
+      .catch((e) => {
+        console.error("[holobox] could not load the 3D stage:", e);
+        if (alive) setVisual({ ready: false, error: "load-failed" });
+      });
     return () => {
       alive = false;
       instance?.dispose();
+      host.current?.replaceChildren();
       stage.current = null;
+      statusRef.current = {};
       delete window.__ROTO_HOLOBOX__;
     };
-  }, []);
+  }, [attempt]);
+  // Self-heal: a failed start, a failed character load or a WebGL context that stays lost is retried a few times
+  // (1.5 s, 3 s, 6 s apart) instead of leaving an empty box.
+  const tries = useRef(0);
+  useEffect(() => {
+    if (visual.ready) tries.current = 0;
+  }, [visual.ready]);
+  useEffect(() => {
+    if (!visual.error || tries.current >= 3) return;
+    const t = setTimeout(() => {
+      tries.current += 1;
+      setVisual({ ready: false });
+      setAttempt((n) => n + 1);
+    }, visual.error === "context-lost" ? 4000 : 1500 * 2 ** tries.current);
+    return () => clearTimeout(t);
+  }, [visual.error, attempt]);
   useEffect(() => {
     if (team.holobox) stage.current?.setSettings({ holobox: team.holobox, character: team.character });
   }, [team.holobox, team.character, visual.ready]);
@@ -188,7 +213,7 @@ export default function Holobox() {
   useEffect(() => {
     const t = setInterval(() => {
       const v = statusRef.current;
-      post({ type: "status", state: controller.snapshot.state, ready: !!v.ready, error: v.error || null, fps: Math.round(v.metrics?.fps || 0), p95: v.metrics?.p95_ms || 0, buffer: v.buffer, gestures: stage.current?.gestureList?.() || [], notice: controller.snapshot.error || controller.snapshot.notice || "" });
+      post({ type: "status", state: controller.snapshot.state, ready: !!v.ready && !v.lost, loading: v.loading || 0, error: v.error || null, fps: Math.round(v.metrics?.fps || 0), p95: v.metrics?.p95_ms || 0, buffer: v.buffer, gestures: stage.current?.gestureList?.() || [], notice: controller.snapshot.error || controller.snapshot.notice || "" });
     }, 1000);
     return () => clearInterval(t);
   }, [controller, post]);
@@ -210,6 +235,14 @@ export default function Holobox() {
     <div className={`holobox ${cursorHidden ? "is-cursor-hidden" : ""}`} data-state={visual.error ? "error" : snap.state} data-ready={visual.ready ? "1" : "0"} style={{ background: cfg.colors.background }} onDoubleClick={() => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {}))}>
       <div className="holobox-box" style={{ width: box.w, height: box.h, flex: "none" }}>
         <div className="holobox-stage" ref={host} />
+        {!visual.ready && (
+          <div className={`holobox-loading ${lightBox ? "on-light" : "on-dark"}`} data-testid="holobox-loading" role="status" data-error={visual.error ? "1" : "0"}>
+            <i className="holobox-spinner" aria-hidden="true" />
+            <span>
+              {visual.error ? (tries.current >= 3 ? "The display could not start. Reload this page." : "Restarting the display…") : `Loading the character… ${Math.round((visual.loading || 0) * 100)}%`}
+            </span>
+          </div>
+        )}
         {showDisclosure && (
           <p className={`holobox-disclosure ${lightBox ? "on-light" : "on-dark"}`} data-testid="disclosure">
             {cfg.disclosure_text}

@@ -110,3 +110,9 @@ test("window fitting and the output presets (true 1080x1920 by default, 4K for e
   // a window taller than the monitor is cropped by the OS: only the visible part counts
   assert.deepEqual(visibleWindow({ innerWidth: 1080, innerHeight: 1920, outerWidth: 1080, outerHeight: 1920, screenX: 0, screenY: 0 }, { availWidth: 1920, availHeight: 1040 }), { w: 1080, h: 1040 });
 });
+
+test("resolveHolobox accepts null/undefined (stage starts before settings load): this crash blanked the preview", () => {
+  assert.deepEqual(resolveHolobox(null), resolveHolobox({}));
+  assert.deepEqual(resolveHolobox(undefined), resolveHolobox({}));
+  assert.equal(resolveHolobox(null).colors.wall, HOLOBOX_DEFAULTS.colors.wall);
+});

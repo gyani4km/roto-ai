@@ -32,10 +32,26 @@ const ANSWER_LENGTHS = [
   { value: "long", label: "Long (6 to 9 sentences)" },
 ];
 // 1080x1920 when the screen allows it; on a landscape monitor the largest 9:16 window that fits (the page never crops).
+// Reuses the one named window: if it is already open it is only brought to the front (never reloaded, so a loading
+// or running holobox is not interrupted); it is navigated only when it is new or has wandered off the holobox page.
 const openHolobox = () => {
   const h = Math.min(1920, Math.max(480, screen.availHeight - 40));
-  return window.open("/holobox", "roto-holobox", `popup=yes,width=${Math.round((h * 9) / 16)},height=${h},left=0,top=0`);
+  const features = `popup=yes,width=${Math.round((h * 9) / 16)},height=${h},left=0,top=0`;
+  let w = null;
+  try {
+    w = window.open("", "roto-holobox", features);
+    let path = "";
+    try {
+      path = w.location.pathname;
+    } catch {}
+    if (path !== "/holobox") w.location.href = "/holobox";
+    w.focus();
+  } catch {
+    w = window.open("/holobox", "roto-holobox", features);
+  }
+  return w;
 };
+const STALE_MS = 6000;
 const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
 const deepMerge = (a, b) => {
   const out = { ...a };
@@ -49,6 +65,9 @@ export default function Console() {
   const [tab, setTab] = useState(() => (TABS.find(([id]) => id === location.hash.slice(1)) ? location.hash.slice(1) : "preview"));
   const [save, setSave] = useState({ state: "idle", errors: [] });
   const [live, setLive] = useState({ state: "idle", ready: false, fps: 0, buffer: null, gestures: [], notice: "" });
+  const [previewKey, setPreviewKey] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const seen = useRef(0); // when the preview last reported; 0 = not since it (re)loaded
   const [confirmOff, setConfirmOff] = useState(false);
   const pending = useRef({}),
     timer = useRef(),
@@ -61,11 +80,27 @@ export default function Console() {
   }, []);
   useEffect(() => {
     const on = (e) => {
-      if (e.origin === location.origin && e.data?.roto === "holobox" && e.data.type === "status") setLive(e.data);
+      if (e.origin === location.origin && e.data?.roto === "holobox" && e.data.type === "status" && e.source === frame.current?.contentWindow) {
+        seen.current = Date.now();
+        setLive(e.data);
+      }
     };
     addEventListener("message", on);
     return () => removeEventListener("message", on);
   }, []);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  // The status shown is only ever as fresh as the last report from the preview: if it goes quiet, it is not "ready".
+  const reported = seen.current > 0 && now - seen.current < STALE_MS;
+  const shown = reported ? live : { ...live, ready: false, error: null, fps: 0, state: "idle" };
+  const stalled = seen.current > 0 && !reported;
+  const reloadPreview = () => {
+    seen.current = 0;
+    setLive({ state: "idle", ready: false, fps: 0, buffer: null, gestures: [], notice: "" });
+    setPreviewKey((k) => k + 1);
+  };
   const choose = (id) => {
     setTab(id);
     history.replaceState(null, "", `#${id}`);
@@ -103,14 +138,14 @@ export default function Console() {
   if (!s) return <div className="console-fatal" role="status">Loading settings…</div>;
 
   const sections = {
-    preview: <PreviewSection s={s} cmd={cmd} live={live} />,
+    preview: <PreviewSection s={s} cmd={cmd} live={shown} />,
     persona: <PersonaSection s={s} change={change} configured={body.configured} />,
     voice: <VoiceSection s={s} change={change} />,
     languages: <LanguagesSection s={s} change={change} />,
-    character: <CharacterSection s={s} change={change} live={live} onDisclosureOff={() => setConfirmOff(true)} />,
+    character: <CharacterSection s={s} change={change} live={shown} onDisclosureOff={() => setConfirmOff(true)} />,
     demo: <DemoSection s={s} change={change} cmd={cmd} />,
     devices: <DevicesSection />,
-    diagnostics: <DiagnosticsSection live={live} />,
+    diagnostics: <DiagnosticsSection live={shown} />,
   };
   return (
     <div className="console">
@@ -153,16 +188,27 @@ export default function Console() {
           </p>
         )}
       </main>
-      {tab !== "diagnostics" && (
-        <aside className="console-preview" aria-label="Holobox preview">
-          <div className="preview-frame">
-            <iframe ref={frame} title="Holobox preview" src="/holobox?embed=1" allow="microphone; autoplay; fullscreen" data-testid="preview-frame" />
-          </div>
-          <p className="preview-status" data-testid="preview-status">
-            {live.ready ? `Holobox ${live.state}${live.fps ? `, ${live.fps} fps` : ""}` : live.error ? `Holobox: ${live.error}` : "Loading the character…"}
-          </p>
-        </aside>
-      )}
+      {/* Always mounted (hidden, not removed, on Diagnostics) so the character is never reloaded by switching tabs. */}
+      <aside className="console-preview" aria-label="Holobox preview" hidden={tab === "diagnostics"}>
+        <div className="preview-frame">
+          <iframe key={previewKey} ref={frame} title="Holobox preview" src="/holobox?embed=1" allow="microphone; autoplay; fullscreen" data-testid="preview-frame" />
+        </div>
+        <p className="preview-status" data-testid="preview-status" data-ready={shown.ready ? "1" : "0"}>
+          {shown.ready
+            ? `Holobox ${shown.state}${shown.fps ? `, ${shown.fps} fps` : ""}`
+            : shown.error
+              ? `Holobox: ${shown.error}`
+              : stalled
+                ? "The preview stopped responding."
+                : `Loading the character… ${Math.round((shown.loading || 0) * 100)}%`}
+          {(shown.error || stalled) && (
+            <>
+              {" "}
+              <button type="button" className="link" data-testid="preview-reload" onClick={reloadPreview}>Reload preview</button>
+            </>
+          )}
+        </p>
+      </aside>
       <dialog open={confirmOff} className="confirm" data-testid="disclosure-confirm" aria-labelledby="dc-title">
         <h3 id="dc-title">Turn the AI disclosure off?</h3>
         <p>

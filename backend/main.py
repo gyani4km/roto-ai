@@ -14,10 +14,10 @@ from typing import AsyncIterator, Literal
 import httpx
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend import net
+from backend import net, warm
 from backend.avatar import model_inventory
 from backend.config import MODEL_PATH, ROOT, BUILD, STAGE, AVATAR_LOCK, MODEL_OVERRIDE
 from backend.conversation.prompt import build_system_prompt, answer_budget
@@ -28,12 +28,19 @@ from backend import settings as team_settings
 @asynccontextmanager
 async def lifespan(_app):
     # Open the shared keep-alive pool to Google, Sarvam and the LLM now, so the first question is not a cold start.
-    if os.getenv('ROTO_PRELOAD', '1') != '0':
+    warm_task = asyncio.create_task(warm.warm(MODEL_PATH, [ROOT / 'frontend' / 'dist' / 'anim' / 'roto_gestures_v001.glb'], model_inventory))
+    # Warming the cloud connections takes up to 15 s on a slow network; do it in the background so the server (and the
+    # preview) is reachable at once. The first question still finds the pool open unless it is asked in the first seconds.
+    async def _net_start():
         try:
             await asyncio.wait_for(net.start(), 15)
         except Exception:
             pass
+    net_task = asyncio.create_task(_net_start()) if os.getenv('ROTO_PRELOAD', '1') != '0' else None
     yield
+    warm_task.cancel()
+    if net_task:
+        net_task.cancel()
     await net.stop()
 
 app = FastAPI(title='ROTO API', version='0.2.0', lifespan=lifespan)
@@ -205,12 +212,21 @@ def avatar_inventory():
     except (ValueError, KeyError, OSError):
         raise HTTPException(422, 'Configured GLB could not be inspected. Check the local source file.')
 
+def _model_response(request: Request):
+    avatar_inventory()  # checksum verified once per file version (cached); see backend/warm.py
+    st = MODEL_PATH.stat()
+    etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+    # no-cache = the browser may keep its copy but must revalidate; an unchanged file then costs a 304, not 18 MB.
+    headers = {'Cache-Control': 'private, no-cache', 'ETag': etag}
+    if etag in [t.strip() for t in request.headers.get('if-none-match', '').split(',')]:
+        return Response(status_code=304, headers=headers)
+    return FileResponse(MODEL_PATH, media_type='model/gltf-binary', headers=headers)
+
 @app.get('/api/avatar/model')
-def avatar_model():
+def avatar_model(request: Request):
     if not MODEL_PATH.is_file():
         raise HTTPException(404, 'Configured GLB is missing')
-    avatar_inventory()
-    return FileResponse(MODEL_PATH, media_type='model/gltf-binary', headers={'Cache-Control': 'no-cache'})
+    return _model_response(request)
 
 @app.get('/api/config')
 def public_config():

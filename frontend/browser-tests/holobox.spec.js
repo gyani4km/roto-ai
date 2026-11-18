@@ -27,6 +27,7 @@ async function mockSpeech(page, seen = {}) {
 async function holobox(page, query = "") {
   await page.goto(`/holobox${query}`);
   await page.waitForFunction(() => window.__ROTO_HOLOBOX__?.stage.inspect().realGLBLoaded, null, { timeout: 60000 });
+  await page.waitForSelector('.holobox[data-ready="1"]', { timeout: 10000 }); // loading text gone
 }
 async function resetSettings(request) {
   await request.post(`${BASE}/api/settings/reset`);
@@ -124,7 +125,8 @@ test("disclosure: on by default, off needs a confirm in the console, event outpu
   await expect(page.getByTestId("save-state")).toHaveText(/Saved/);
   expect((await (await request.get(`${BASE}/api/settings`)).json()).settings.holobox.disclosure).toBe(false);
   await page.goto("/holobox");
-  await page.waitForTimeout(1500);
+  await page.waitForSelector('.holobox[data-ready="1"]', { timeout: 60000 }); // the loading text is the only other UI and ends when the character is live
+  await expect(page.getByTestId("holobox-loading")).toHaveCount(0);
   await expect(page.getByTestId("disclosure")).toHaveCount(0);
   expect(await page.evaluate(() => document.body.innerText.trim())).toBe("");
   await page.goto("/holobox?output=event");

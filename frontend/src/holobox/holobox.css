@@ -29,3 +29,12 @@ html, body, #root { height: 100%; margin: 0; }
 .holobox-operator dt { color: #aab0a6; } .holobox-operator dd { margin: 0; }
 .holobox-operator form { display: flex; gap: 6px; } .holobox-operator input { flex: 1; min-width: 0; padding: 6px; }
 .holobox-operator button { padding: 5px 9px; }
+.holobox-loading {
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.2cqh;
+  pointer-events: none; color: rgba(236, 238, 240, 0.8); font: 500 clamp(11px, 2.6cqw, 40px)/1.3 "Manrope", system-ui, sans-serif; text-align: center; padding: 0 8cqw;
+}
+.holobox-spinner { width: 6cqw; height: 6cqw; min-width: 18px; min-height: 18px; border-radius: 50%; border: 0.45cqw solid rgba(236, 238, 240, 0.25); border-top-color: rgba(236, 238, 240, 0.9); animation: holobox-spin 0.9s linear infinite; }
+.holobox-loading.on-light { color: rgba(40, 42, 38, 0.75); }
+.holobox-loading.on-light .holobox-spinner { border-color: rgba(40, 42, 38, 0.2); border-top-color: rgba(40, 42, 38, 0.8); }
+@keyframes holobox-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .holobox-spinner { animation-duration: 3s; } }

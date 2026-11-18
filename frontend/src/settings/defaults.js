@@ -41,6 +41,8 @@ export const THEMES = {
   white: { colors: { wall: "#D6D5D1", floor: "#C4C2BD", ceiling: "#E4E3DF", background: "#B9B8B4" }, spot_intensity: 0.6, spot_angle: 55, spot_softness: 0.8, fill_level: 0.55, rim_level: 0.25, light_warmth: 0.35 },
 };
 /** Holobox settings with every field present (a partial or missing object falls back to the defaults). */
-export function resolveHolobox(partial = {}) {
+export function resolveHolobox(partial) {
+  // null/undefined = settings not loaded yet (the 3D stage can start before /api/settings answers): use the defaults.
+  partial = partial || {};
   return { ...HOLOBOX_DEFAULTS, ...partial, colors: { ...HOLOBOX_DEFAULTS.colors, ...(partial.colors || {}) } };
 }

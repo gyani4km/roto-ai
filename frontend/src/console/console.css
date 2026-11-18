@@ -65,3 +65,5 @@
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .preview-frame iframe { aspect-ratio: 9 / 16; height: 100%; width: auto; max-width: 100%; }
 .card > button { justify-self: start; }
+.console-preview[hidden] { display: none; }
+.preview-status button.link { background: none; border: 0; padding: 0; color: var(--text-secondary); text-decoration: underline; font: inherit; cursor: pointer; }

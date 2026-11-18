@@ -26,7 +26,7 @@ $serverArgs = @('-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--p
 $server = Start-Process -FilePath $pythonExe -ArgumentList $serverArgs -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runtimeDir 'server-out.log') -RedirectStandardError (Join-Path $runtimeDir 'server-error.log')
 $server.Id | Set-Content -LiteralPath (Join-Path $runtimeDir 'server.pid')
 $started = $false
-for ($attempt = 0; $attempt -lt 30; $attempt++) {
+for ($attempt = 0; $attempt -lt 120; $attempt++) {
     Start-Sleep -Milliseconds 300
     if ($server.HasExited) { throw 'Server stopped. See runtime\server-error.log.' }
     try {
