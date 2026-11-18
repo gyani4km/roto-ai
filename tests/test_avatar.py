@@ -17,14 +17,14 @@ def test_inventory_and_source_unchanged():
     inventory = client.get('/api/avatar/inventory').json()
     assert inventory['sha256'] == before
     assert inventory['sha256'] == AVATAR_LOCK['sha256']
-    assert inventory['triangles'] == 70629
+    assert inventory['triangles'] == 75717
     assert inventory['bone_count'] == 170
     assert inventory['animations'] == []
     morphs = {n for m in inventory['meshes'] for n in m['morphs']}
     assert all('viseme_' + n in morphs for n in ['sil','PP','FF','TH','DD','kk','CH','SS','nn','RR','aa','E','I','O','U'])
     assert {'eyeBlinkLeft','eyeBlinkRight','jawOpen','mouthSmile'} <= morphs
-    assert sum(m['primitives'] for m in inventory['meshes']) == 8
-    assert AVATAR_LOCK['original_file'] == 'revanth_daz_v024_clothes_test.glb'
+    assert sum(m['primitives'] for m in inventory['meshes']) == 9
+    assert AVATAR_LOCK['original_file'] == 'character.glb'
     assert AVATAR_LOCK['history'][0]['original_file'] == 'revanth_daz_v019_skin.glb'
     response = client.get('/api/avatar/model')
     assert response.status_code == 200
