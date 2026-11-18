@@ -1,0 +1,50 @@
+@font-face {
+  font-family: Manrope;
+  src: url("/fonts/manrope.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Telugu";
+  src: url("/fonts/notosanstelugu.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Devanagari";
+  src: url("/fonts/notosansdevanagari.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+:root {
+  --stage: #f7f7f2;
+  --surface: #ffffff;
+  --surface-raised: #e9ebe4;
+  --text: #20231f;
+  --text-secondary: #515750;
+  --accent: #455327;
+  --accent-ink: #ffffff;
+  --line: #b9beb4;
+  --danger: #8c332d;
+  --font: Manrope, "Noto Telugu", "Noto Devanagari", sans-serif;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-small: 6px;
+  --radius-panel: 16px;
+  --ease: cubic-bezier(0.2, 0.65, 0.3, 1);
+  --duration: 180ms;
+  color-scheme: light;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--stage);
+  font-synthesis: none;
+}

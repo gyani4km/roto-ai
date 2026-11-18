@@ -1,0 +1,83 @@
+{
+  "persona": {
+    "system_prompt": "",
+    "greeting": "Hello. How can I help?",
+    "answer_length": "short",
+    "allowed_topics": [],
+    "blocked_topics": [],
+    "facts": "",
+    "fallback": "I am sorry, I do not know that. Please ask a member of our team."
+  },
+  "voice": {
+    "voices": {
+      "en": "",
+      "te": "",
+      "hi": ""
+    },
+    "speed": 1.0
+  },
+  "languages": {
+    "enabled": [
+      "en",
+      "te",
+      "hi"
+    ],
+    "default": "en",
+    "auto_detect": true
+  },
+  "character": {
+    "gestures_enabled": true,
+    "gesture_intensity": 0.75,
+    "gesture_frequency": 0.75,
+    "disabled_gestures": [],
+    "idle_style": "calm",
+    "removeTilak": true,
+    "mixamo": true
+  },
+  "holobox": {
+    "disclosure": true,
+    "disclosure_text": "AI-generated digital representation — not a live person",
+    "theme": "black",
+    "output": "1080x1920",
+    "fit": "contain",
+    "box_aspect_w": 9,
+    "box_aspect_h": 16,
+    "depth_ratio": 0.6,
+    "camera_height": 0.47,
+    "camera_zoom": 1.0,
+    "lens_fov": 28,
+    "character_height": 0.83,
+    "colors": {
+      "wall": "#121215",
+      "floor": "#0D0D10",
+      "ceiling": "#151518",
+      "background": "#0B0B0D"
+    },
+    "light_intensity": 1.0,
+    "light_warmth": 0.25,
+    "spot_intensity": 0.6,
+    "spot_angle": 38,
+    "spot_softness": 0.55,
+    "fill_level": 0.3,
+    "rim_level": 0.45,
+    "vignette": 0.3,
+    "ptt_key": "Space",
+    "hot_corner": true,
+    "listening_indicator": false,
+    "cursor_hide_s": 2
+  },
+  "scripted_demo": [
+    {
+      "q": "Hello, who are you?",
+      "a": "Hello. I am ROTO, an AI-generated digital representation. I am not a live person. I am here to show how a talking digital host can work."
+    },
+    {
+      "q": "What can you do?",
+      "a": "I can listen to a question and answer it aloud, with my lips moving in time with my voice. You can talk to me, or type your question. You can stop me at any time."
+    },
+    {
+      "q": "Are you a real person?",
+      "a": "No. I am an AI-generated digital representation, and this is a demonstration with prepared answers. Please do not treat anything I say here as an official statement."
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/
+*.log
+.venv/
+.env.*
+!.env.example
+frontend/playwright-report/
+evidence/**/test-artifacts/
+*.glb
+*.blend
+*.zip
+runtime/
+local-assets/
+.vite/
+frontend/.scratch/
+
+config/team-settings.json
+config/team-settings.tmp
+
+# Team-release additions
+evidence/
+/assets/
+!frontend/public/anim/roto_gestures_v001.glb

@@ -1,0 +1,20 @@
+{
+  "original_source_path": "ROTO_CHARACTER/exports/revanth_daz_v024_clothes_test.glb",
+  "original_file": "revanth_daz_v024_clothes_test.glb",
+  "sha256": "03bf97efe572754f62d625d98c93db8102c635d8a5c3df6ac784c26e98f789cf",
+  "bytes": 17956980,
+  "snapshot_relative_path": "local-assets/s1-core/character-03bf97efe572754f62d625d98c93db8102c635d8a5c3df6ac784c26e98f789cf.glb",
+  "captured_utc": "2026-11-17T13:44:50.654408+00:00",
+  "reason": "Stage 1 core: v024 clothed character (DAZ G8M, face-unit visemes). Replaces v019 pin; v019 lock kept in history.",
+  "history": [
+    {
+      "original_source_path": "ROTO_CHARACTER/exports/revanth_daz_v019_skin.glb",
+      "original_file": "revanth_daz_v019_skin.glb",
+      "sha256": "e25b9beccc5566b158756a74007e98c2735899e70da701ea4071fb4df8b52e7e",
+      "bytes": 6402232,
+      "snapshot_relative_path": "local-assets/s1-v001/character-e25b9beccc5566b158756a74007e98c2735899e70da701ea4071fb4df8b52e7e.glb",
+      "captured_utc": "2026-11-17T09:46:03.941518+00:00",
+      "reason": "Source exporter modified the same v019 filename during S1. This private snapshot pins exact bytes; no source was changed."
+    }
+  ]
+}
