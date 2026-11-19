@@ -1,6 +1,7 @@
 # ROTO AI: digital host (Holobox)
 
 A talking AI character for the Holobox booth. A team console controls it; the Holobox page shows it (1080x1920, true portrait). It listens in English, Telugu and Hindi, answers in the same language with a real voice and lip-sync.
+n> **Setting this up with an AI agent (e.g. Claude Code)?** Point it at [SETUP_FOR_AGENTS.md](SETUP_FOR_AGENTS.md) first.
 
 The screen must always carry: "AI-generated digital representation, not a live person." This is a prototype and a review build, not a claim of live AI.
 
@@ -16,7 +17,7 @@ The screen must always carry: "AI-generated digital representation, not a live p
    | `GOOGLE_TTS_API_KEY` | The voice (Google Cloud Text-to-Speech). Enable the "Cloud Text-to-Speech API" in your Google Cloud project first | https://console.cloud.google.com/apis/credentials |
    | `SARVAM_API_KEY` | Speech to text for the microphone (Sarvam AI, detects English, Telugu, Hindi) | https://dashboard.sarvam.ai/ |
 
-4. **Put the character file in place.** The character is a licensed DAZ asset and is not in this repository. Put the character file you received privately at `assets\character.glb` (create the `assets` folder if it is not there), then double-click `Setup-ROTO.cmd` again. It checks the file against the pinned SHA-256 in `config/avatar-lock.json`. If you use a different character file, Setup pins it for you (see Troubleshooting).
+4. **Character file.** It is included in this private repository at `assets\character.glb` (v025, 16.5 MB). Setup checks it against the pinned SHA-256 in `config/avatar-lock.json`. If you swap in a different character file, Setup pins it for you (see Troubleshooting). Licence note: it is built from DAZ Genesis 8 content, so keep this repository private and team-only. Never make it public or share the .glb outside the team.
 5. **Start.** Double-click `Start-ROTO.cmd`. It starts the server and opens the **console** at http://127.0.0.1:8000. For the booth screen, double-click `Open-Holobox.cmd` (Edge app window, 1080x1920; press F11 for full screen). Stop the server with `scripts\Stop-ROTO.ps1`.
 
 The PC needs internet (the three services above run in the cloud). There are no model downloads.

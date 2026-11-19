@@ -23,5 +23,7 @@ config/team-settings.tmp
 
 # Team-release additions
 evidence/
-/assets/
+/assets/*
+!/assets/character.glb
 !frontend/public/anim/roto_gestures_v001.glb
+!assets/character.glb
