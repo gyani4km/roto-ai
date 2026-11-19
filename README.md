@@ -1,7 +1,7 @@
 # ROTO AI: digital host (Holobox)
 
 A talking AI character for the Holobox booth. A team console controls it; the Holobox page shows it (1080x1920, true portrait). It listens in English, Telugu and Hindi, answers in the same language with a real voice and lip-sync.
-n> **Setting this up with an AI agent (e.g. Claude Code)?** Point it at [SETUP_FOR_AGENTS.md](SETUP_FOR_AGENTS.md) first.
+> **Setting this up with an AI agent (e.g. Claude Code)?** Point it at [SETUP_FOR_AGENTS.md](SETUP_FOR_AGENTS.md) first.
 
 The screen must always carry: "AI-generated digital representation, not a live person." This is a prototype and a review build, not a claim of live AI.
 
