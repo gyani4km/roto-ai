@@ -21,7 +21,7 @@ Read this whole file before running anything. It covers how to set up and verify
 
 ## 2. Hard rules for agents
 1. **Never commit or print secrets.** `.env` holds the three API keys. Never echo the key values, never write them in any file except `.env`, and never `git add .env`.
-2. **Ask the human for the keys.** Don't search the PC for them. If `.env` is missing values, tell the human exactly which keys are needed (section 4).
+2. **The keys are already in this private repo's `.env`** (added by the owner on 19 Nov 2026). Use them as they are. Never print them, copy them elsewhere or put them in other files. If a key stops working, ask the owner for a new one.
 3. **Keep the repo private.** `assets/character.glb` is derived from licensed DAZ content. Never make the repository public, upload the .glb elsewhere, or send it to any external service.
 4. **No paid actions.** Don't buy anything and don't change cloud billing.
 5. **Use the data drive.** If the PC has a small or full C: drive, put caches on another drive. Set `PIP_CACHE_DIR`, `npm_config_cache` and `PLAYWRIGHT_BROWSERS_PATH`, and the optional `ROTO_CACHE_DIR` and `ROTO_EDGE_PROFILE`.
@@ -53,7 +53,7 @@ You need a GPU with WebGL2; integrated graphics works at lower FPS. Development 
    4. Copies `.env.example` to `.env` if it is missing.
    5. Verifies or pins the character with `scripts/prepare_avatar.py`.
    6. Runs `npm ci` and `npm run build` in `frontend/`.
-4. **Fill in `.env`.** Ask the human for these values:
+4. **Check `.env`.** It already ships with the owner's keys. Don't overwrite it. The keys it holds are:
    - `LLM_API_KEY`: Groq key. `LLM_BASE_URL=https://api.groq.com/openai/v1` and `LLM_MODEL=openai/gpt-oss-120b`.
    - `GOOGLE_TTS_API_KEY`: Google Cloud key with the "Cloud Text-to-Speech API" enabled.
    - `SARVAM_API_KEY`: Sarvam AI key.
@@ -110,6 +110,5 @@ tests/                      pytest; frontend/tests = vitest; frontend/browser-te
 ```
 
 ## 8. What is NOT in the repo
-- `.env` (keys): ask the human.
 - The Blender source files and Mixamo FBX files. These are only needed to rebuild the character or the gestures, not to run the app.
 - `runtime/` (logs, test output) and `local-assets/` (the pinned snapshot copy). Both are recreated automatically.
